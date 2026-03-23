@@ -8,7 +8,7 @@ export const walletService = {
 
   async connectWallet() {
     if (!window.ethereum) {
-      throw new Error('MetaMask is not installed. Please install MetaMask.');
+      throw new Error('MetaMask not installed. Please install MetaMask.');
     }
 
     const accounts = await window.ethereum.request({
@@ -24,14 +24,13 @@ export const walletService = {
 
     const network = await this.provider.getNetwork();
     const chainId = Number(network.chainId);
-    console.log('Connected chainId:', chainId);
 
-    // Switch to Hardhat if on wrong network
-    if (chainId !== 31337) {
+    // Switch to Sepolia if on wrong network
+    if (chainId !== 11155111) {
       try {
         await window.ethereum.request({
           method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x7a69' }], // 31337 in hex
+          params: [{ chainId: '0xaa36a7' }], // Sepolia
         });
         this.provider = new ethers.BrowserProvider(window.ethereum);
         this.signer   = await this.provider.getSigner();
@@ -40,35 +39,23 @@ export const walletService = {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [{
-              chainId: '0x7a69',
-              chainName: 'Hardhat Local',
+              chainId: '0xaa36a7',
+              chainName: 'Sepolia Test Network',
               nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-              rpcUrls: ['http://127.0.0.1:8545'],
-              blockExplorerUrls: [],
+              rpcUrls: ['https://eth-sepolia.g.alchemy.com/v2/t77AU4Uv0dOu6q3QKSa1e'],
+              blockExplorerUrls: ['https://sepolia.etherscan.io'],
             }],
           });
           this.provider = new ethers.BrowserProvider(window.ethereum);
           this.signer   = await this.provider.getSigner();
-        } else {
-          throw err;
         }
       }
     }
 
-    const contractAddress = contractConfig.address || contractConfig.contractAddress;
-    if (!contractAddress) {
-      throw new Error('Contract address not found. Run: npx hardhat run scripts/deploy.js --network localhost');
-    }
+    const contractAddress = contractConfig.address;
+    this.contract = new ethers.Contract(contractAddress, contractConfig.abi, this.signer);
 
-    this.contract = new ethers.Contract(
-      contractAddress,
-      contractConfig.abi,
-      this.signer
-    );
-
-    console.log('✅ Wallet connected:', accounts[0]);
-    console.log('✅ Contract:', contractAddress);
-
+    console.log('✅ Connected to Sepolia:', accounts[0]);
     return accounts[0];
   },
 
@@ -77,9 +64,7 @@ export const walletService = {
     try {
       const accounts = await window.ethereum.request({ method: 'eth_accounts' });
       return accounts[0] || null;
-    } catch (e) {
-      return null;
-    }
+    } catch { return null; }
   },
 
   getContract() {
@@ -89,15 +74,10 @@ export const walletService = {
 
   async getBalance(address) {
     try {
-      if (!this.provider) {
-        this.provider = new ethers.BrowserProvider(window.ethereum);
-      }
+      if (!this.provider) this.provider = new ethers.BrowserProvider(window.ethereum);
       const balance = await this.provider.getBalance(address);
       return ethers.formatEther(balance);
-    } catch (e) {
-      console.warn('Balance fetch failed:', e.message);
-      return '0';
-    }
+    } catch { return '0'; }
   },
 
   formatAddress(address) {

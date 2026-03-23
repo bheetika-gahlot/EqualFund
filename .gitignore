@@ -1,0 +1,59 @@
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/.yarn/
+
+# ── Environment Files (NEVER commit these) ────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+equalfund-backend/.env
+
+# ── Hardhat / Blockchain ───────────────────────────────────
+artifacts/
+cache/
+coverage/
+coverage.json
+typechain/
+typechain-types/
+deployments/localhost/
+
+# ── Build Outputs ──────────────────────────────────────────
+frontend/dist/
+frontend/build/
+dist/
+build/
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ── OS Files ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Private Keys & Secrets ────────────────────────────────
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# ── Testing ───────────────────────────────────────────────
+coverage/
+.nyc_output/

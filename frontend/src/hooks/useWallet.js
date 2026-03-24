@@ -35,11 +35,15 @@ export function useWallet() {
         setAccount(accounts[0]);
         const bal = await walletService.getBalance(accounts[0]);
         setBalance(bal);
+        localStorage.setItem('ef-wallet-connected', 'true');
       } else {
-        // User disconnected from MetaMask
+        // Only disconnect wallet — keep user session
         setAccount(null);
         setBalance(null);
         localStorage.removeItem('ef-wallet-connected');
+        walletService.provider = null;
+        walletService.signer   = null;
+        walletService.contract = null;
       }
     });
 
@@ -91,10 +95,10 @@ export function useWallet() {
 
     // Clear all session data
     localStorage.removeItem('ef-wallet-connected');
-    localStorage.removeItem('ef-token');
-    localStorage.removeItem('ef-user');
-    localStorage.removeItem('ef-admin-token');
-    localStorage.removeItem('ef-admin-user');
+    // localStorage.removeItem('ef-token');
+    // localStorage.removeItem('ef-user');
+    // localStorage.removeItem('ef-admin-token');
+    // localStorage.removeItem('ef-admin-user');
 
     // Reload so all state resets cleanly
     window.location.href = '/';

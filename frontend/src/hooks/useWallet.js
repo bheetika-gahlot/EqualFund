@@ -2,34 +2,42 @@ import { useState, useEffect, useCallback } from 'react';
 import { walletService } from '../services/walletService';
 
 export function useWallet() {
-  const [account, setAccount] = useState(null);
+  const [account, setAccount]       = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState(null);
-  const [balance, setBalance] = useState(null);
+  const [error, setError]           = useState(null);
+  const [balance, setBalance]       = useState(null);
   const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
 
   useEffect(() => {
     setIsMetaMaskInstalled(!!window.ethereum);
 
-    // ── Only reconnect if user explicitly connected before ──
-    // This prevents auto-connecting on every page load
     const wasConnected = localStorage.getItem('ef-wallet-connected') === 'true';
 
     if (wasConnected) {
       walletService.getCurrentAccount().then(async (acc) => {
         if (acc) {
-          setAccount(acc);
+          // Check if on Sepolia — if not, switch first
+          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+          if (chainId !== '0xaa36a7') {
+            try {
+              await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: '0xaa36a7' }],
+              });
+            } catch (e) {
+              console.warn('Could not auto-switch to Sepolia:', e.message);
+            }
+          }
           await walletService.connectWallet();
+          setAccount(acc);
           const bal = await walletService.getBalance(acc);
           setBalance(bal);
         } else {
-          // Wallet was disconnected from MetaMask side
           localStorage.removeItem('ef-wallet-connected');
         }
       });
     }
 
-    // Listen for account changes in MetaMask
     walletService.onAccountChange(async (accounts) => {
       if (accounts.length > 0) {
         setAccount(accounts[0]);
@@ -37,7 +45,6 @@ export function useWallet() {
         setBalance(bal);
         localStorage.setItem('ef-wallet-connected', 'true');
       } else {
-        // Only disconnect wallet — keep user session
         setAccount(null);
         setBalance(null);
         localStorage.removeItem('ef-wallet-connected');
@@ -47,36 +54,64 @@ export function useWallet() {
       }
     });
 
-    walletService.onChainChange(() => {
-      window.location.reload();
+    walletService.onChainChange((chainId) => {
+      if (chainId !== '0xaa36a7') {
+        // Switched away from Sepolia — switch back
+        window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0xaa36a7' }],
+        }).catch(() => {});
+      } else {
+        window.location.reload();
+      }
     });
 
-    return () => {
-      walletService.removeListeners();
-    };
+    return () => walletService.removeListeners();
   }, []);
 
   const connectWallet = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
     try {
+      // Force Sepolia before connecting
+      if (window.ethereum) {
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        if (chainId !== '0xaa36a7') {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0xaa36a7' }],
+            });
+          } catch (switchErr) {
+            if (switchErr.code === 4902) {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0xaa36a7',
+                  chainName: 'Sepolia Test Network',
+                  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                  rpcUrls: ['https://eth-sepolia.g.alchemy.com/v2/t77AU4Uv0dOu6q3QKSa1e'],
+                  blockExplorerUrls: ['https://sepolia.etherscan.io'],
+                }],
+              });
+            }
+          }
+        }
+      }
+
       const acc = await walletService.connectWallet();
       setAccount(acc);
       const bal = await walletService.getBalance(acc);
       setBalance(bal);
-
-      // ── Remember that user connected ──
       localStorage.setItem('ef-wallet-connected', 'true');
 
-      // Auto-link wallet to logged-in MongoDB account
+      // Link wallet to MongoDB account
       const token = localStorage.getItem('ef-token');
       if (token && acc) {
         try {
           const { authAPI } = await import('../services/apiService');
           await authAPI.linkWallet(acc);
-        } catch (e) {
-          // Wallet may already be linked — safe to ignore
-        }
+        } catch (e) { /* already linked */ }
       }
     } catch (err) {
       setError(err.message);
@@ -85,23 +120,15 @@ export function useWallet() {
     }
   }, []);
 
-  // ── Full disconnect — clears everything ──
+  // Disconnect wallet only — keep user logged in
   const disconnect = useCallback(() => {
     setAccount(null);
     setBalance(null);
     walletService.provider = null;
-    walletService.signer = null;
+    walletService.signer   = null;
     walletService.contract = null;
-
-    // Clear all session data
     localStorage.removeItem('ef-wallet-connected');
-    // localStorage.removeItem('ef-token');
-    // localStorage.removeItem('ef-user');
-    // localStorage.removeItem('ef-admin-token');
-    // localStorage.removeItem('ef-admin-user');
-
-    // Reload so all state resets cleanly
-    window.location.href = '/';
+    window.location.reload();
   }, []);
 
   return {

@@ -1,15 +1,20 @@
-const hre = require('hardhat');
-const fs  = require('fs');
+const hre  = require('hardhat');
+const fs   = require('fs');
 const path = require('path');
 
 async function main() {
-  console.log('🚀 Deploying EqualFund contract...');
+  console.log('🚀 Deploying EqualFund to Polygon Amoy...');
 
   const [deployer] = await hre.ethers.getSigners();
-  console.log('Deploying with account:', deployer.address);
+  console.log('Deployer:', deployer.address);
 
   const balance = await hre.ethers.provider.getBalance(deployer.address);
-  console.log('Account balance:', hre.ethers.formatEther(balance), 'ETH');
+  console.log('Balance:', hre.ethers.formatEther(balance), 'MATIC');
+
+  if (parseFloat(hre.ethers.formatEther(balance)) < 0.01) {
+    console.error('❌ Not enough MATIC! Get free MATIC from: https://faucet.polygon.technology');
+    process.exit(1);
+  }
 
   const EqualFund = await hre.ethers.getContractFactory('EqualFund');
   const contract  = await EqualFund.deploy(deployer.address);
@@ -18,28 +23,29 @@ async function main() {
   const address = await contract.getAddress();
   console.log('✅ EqualFund deployed to:', address);
 
-  // Save to frontend
-  const artifact    = await hre.artifacts.readArtifact('EqualFund');
-  const configPath  = path.join(__dirname, '../frontend/src/config/contract.json');
+  // Save to frontend config
+  const artifact   = await hre.artifacts.readArtifact('EqualFund');
+  const configPath = path.join(__dirname, '../frontend/src/config/contract.json');
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify({
     address,
-    chainId: 31337,
-    network: 'localhost',
-    abi: artifact.abi,
+    chainId: 80002,
+    network: 'amoy',
+    abi:     artifact.abi,
   }, null, 2));
 
-  console.log('📝 Contract config saved to frontend/src/config/contract.json');
+  console.log('📝 Contract config saved!');
   console.log('\n📋 Deployment Summary:');
   console.log('========================');
-  console.log('Contract Address:', address);
-  console.log('Network: localhost');
-  console.log('Deployer:', deployer.address);
+  console.log('Contract:', address);
+  console.log('Network:  Polygon Amoy');
+  console.log('ChainId:  80002');
+  console.log('Explorer: https://amoy.polygonscan.com/address/' + address);
   console.log('========================');
 }
 
-main().catch((error) => {
-  console.error('❌ Deployment failed:', error.message);
-  process.exitCode = 1;
+main().catch(e => {
+  console.error('❌ Deploy failed:', e.message);
+  process.exit(1);
 });

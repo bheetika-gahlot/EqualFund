@@ -1,62 +1,54 @@
 import { ethers } from 'ethers';
 import contractConfig from '../config/contract.json';
 
+const SEPOLIA = {
+  chainId:            '0xaa36a7',
+  chainName:          'Sepolia Test Network',
+  nativeCurrency:     { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  rpcUrls:            ['https://eth-sepolia.g.alchemy.com/v2/t77AU4Uv0dOu6q3QKSa1e'],
+  blockExplorerUrls:  ['https://sepolia.etherscan.io'],
+};
+
 export const walletService = {
   provider: null,
   signer:   null,
   contract: null,
 
   async connectWallet() {
-    if (!window.ethereum) {
-      throw new Error('MetaMask not installed. Please install MetaMask.');
-    }
+    if (!window.ethereum) throw new Error('MetaMask not installed.');
 
-    const accounts = await window.ethereum.request({
-      method: 'eth_requestAccounts'
-    });
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
 
-    if (!accounts || accounts.length === 0) {
-      throw new Error('No accounts found. Please unlock MetaMask.');
-    }
-
-    this.provider = new ethers.BrowserProvider(window.ethereum);
-    this.signer   = await this.provider.getSigner();
-
-    const network = await this.provider.getNetwork();
-    const chainId = Number(network.chainId);
-
-    // Switch to Sepolia if on wrong network
-    if (chainId !== 11155111) {
+    // Force Sepolia
+    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    if (chainId !== SEPOLIA.chainId) {
       try {
         await window.ethereum.request({
           method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0xaa36a7' }], // Sepolia
+          params: [{ chainId: SEPOLIA.chainId }],
         });
-        this.provider = new ethers.BrowserProvider(window.ethereum);
-        this.signer   = await this.provider.getSigner();
       } catch (err) {
-        if (err.code === 4902) {
+        if (err.code === 4902 || err.code === -32603) {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: '0xaa36a7',
-              chainName: 'Sepolia Test Network',
-              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-              rpcUrls: ['https://eth-sepolia.g.alchemy.com/v2/t77AU4Uv0dOu6q3QKSa1e'],
-              blockExplorerUrls: ['https://sepolia.etherscan.io'],
-            }],
+            params: [SEPOLIA],
           });
-          this.provider = new ethers.BrowserProvider(window.ethereum);
-          this.signer   = await this.provider.getSigner();
         }
       }
     }
 
-    const contractAddress = contractConfig.address;
-    this.contract = new ethers.Contract(contractAddress, contractConfig.abi, this.signer);
+    this.provider = new ethers.BrowserProvider(window.ethereum);
+    this.signer   = await this.provider.getSigner();
+    const address = await this.signer.getAddress();
 
-    console.log('✅ Connected to Sepolia:', accounts[0]);
-    return accounts[0];
+    this.contract = new ethers.Contract(
+      contractConfig.address,
+      contractConfig.abi,
+      this.signer
+    );
+
+    console.log('✅ Connected to Sepolia:', address);
+    return address;
   },
 
   async getCurrentAccount() {

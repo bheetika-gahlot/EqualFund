@@ -1,28 +1,71 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
-const Activity = require('../models/Activity');
+const express      = require('express');
+const router       = express.Router();
+const User         = require('../models/User');
+const Activity     = require('../models/Activity');
 const Notification = require('../models/Notification');
 const { protect, generateToken } = require('../middleware/auth');
+const { ethers }   = require('ethers');
+
+// ─── AUTO FAUCET (Sepolia) ───────────────────────────────
+const sendFreeETH = async (walletAddress, userName) => {
+  try {
+    if (!process.env.DEPLOYER_PRIVATE_KEY) return;
+
+    const provider = new ethers.JsonRpcProvider(
+      process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/t77AU4Uv0dOu6q3QKSa1e'
+    );
+
+    const deployer = new ethers.Wallet(
+      process.env.DEPLOYER_PRIVATE_KEY.startsWith('0x')
+        ? process.env.DEPLOYER_PRIVATE_KEY
+        : `0x${process.env.DEPLOYER_PRIVATE_KEY}`,
+      provider
+    );
+
+    // Check deployer balance
+    const deployerBal = parseFloat(ethers.formatEther(await provider.getBalance(deployer.address)));
+    if (deployerBal < 0.005) {
+      console.log('⚠️ Deployer low on ETH:', deployerBal);
+      return;
+    }
+
+    // Check if wallet already has ETH
+    const recipientBal = parseFloat(ethers.formatEther(await provider.getBalance(walletAddress)));
+    if (recipientBal > 0.005) {
+      console.log('✅ Wallet already has ETH:', recipientBal);
+      return;
+    }
+
+    // Send 0.01 ETH
+    const tx = await deployer.sendTransaction({
+      to:       walletAddress,
+      value:    ethers.parseEther('0.01'),
+      gasLimit: 21000,
+    });
+
+    console.log(`🚀 Sending 0.01 ETH to ${userName}...`);
+    await tx.wait();
+    console.log(`✅ Sent! TX: ${tx.hash}`);
+    return tx.hash;
+  } catch (e) {
+    console.warn('Faucet error:', e.message);
+  }
+};
 
 // ─── REGISTER ───────────────────────────────────────────
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role, walletAddress } = req.body;
 
-    // Validate
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
     }
 
-    // Check if email already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Email already registered.' });
     }
 
-    // Check wallet address if provided
     if (walletAddress) {
       const existingWallet = await User.findOne({ walletAddress: walletAddress.toLowerCase() });
       if (existingWallet) {
@@ -30,30 +73,31 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    // Create user
     const user = await User.create({
       name,
       email,
       password,
-      role: role || 'borrower',
+      role:          role || 'borrower',
       walletAddress: walletAddress ? walletAddress.toLowerCase() : undefined,
     });
 
-    // Log activity
+    if (walletAddress) sendFreeETH(walletAddress, name);
+
     await Activity.create({
-      userId: user._id,
+      userId:        user._id,
       walletAddress: walletAddress?.toLowerCase(),
-      action: 'register',
-      details: { description: `New ${role || 'borrower'} account created` },
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
+      action:        'register',
+      details:       { description: `New ${role || 'borrower'} account created` },
+      ipAddress:     req.ip,
+      userAgent:     req.headers['user-agent'],
     });
 
-    // Welcome notification
     await Notification.create({
-      userId: user._id,
-      title: '🎉 Welcome to EqualFund!',
-      message: `Hi ${name}! Your account is ready. Connect your MetaMask wallet to start borrowing or lending.`,
+      userId:  user._id,
+      title:   '🎉 Welcome to EqualFund!',
+      message: `Hi ${name}! ${walletAddress
+        ? 'We sent 0.01 Sepolia ETH to your wallet. Check in 30 seconds!'
+        : 'Connect your wallet to receive free Sepolia ETH!'}`,
       type: 'system',
     });
 
@@ -61,17 +105,17 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully!',
+      message: 'Account created! Free ETH is on its way 🚀',
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id:            user._id,
+        name:          user.name,
+        email:         user.email,
+        role:          user.role,
         walletAddress: user.walletAddress,
-        kycStatus: user.kycStatus,
-        creditScore: user.creditScore,
-        createdAt: user.createdAt,
+        kycStatus:     user.kycStatus,
+        creditScore:   user.creditScore,
+        createdAt:     user.createdAt,
       },
     });
   } catch (error) {
@@ -81,7 +125,6 @@ router.post('/register', async (req, res) => {
 });
 
 // ─── LOGIN ───────────────────────────────────────────────
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -90,7 +133,6 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
-    // Get user with password
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
@@ -101,18 +143,16 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
-    // Log activity
     await Activity.create({
-      userId: user._id,
+      userId:        user._id,
       walletAddress: user.walletAddress,
-      action: 'login',
-      details: { description: 'User logged in' },
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
+      action:        'login',
+      details:       { description: 'User logged in' },
+      ipAddress:     req.ip,
+      userAgent:     req.headers['user-agent'],
     });
 
     const token = generateToken(user._id);
@@ -122,14 +162,14 @@ router.post('/login', async (req, res) => {
       message: 'Login successful!',
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id:            user._id,
+        name:          user.name,
+        email:         user.email,
+        role:          user.role,
         walletAddress: user.walletAddress,
-        kycStatus: user.kycStatus,
-        creditScore: user.creditScore,
-        lastLogin: user.lastLogin,
+        kycStatus:     user.kycStatus,
+        creditScore:   user.creditScore,
+        lastLogin:     user.lastLogin,
       },
     });
   } catch (error) {
@@ -139,42 +179,38 @@ router.post('/login', async (req, res) => {
 });
 
 // ─── GET CURRENT USER ────────────────────────────────────
-// GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
   res.json({ success: true, user: req.user });
 });
 
 // ─── UPDATE PROFILE ──────────────────────────────────────
-// PUT /api/auth/profile
 router.put('/profile', protect, async (req, res) => {
   try {
     const { name, bio, phone, country, walletAddress } = req.body;
 
-    // Check wallet not already taken
     if (walletAddress && walletAddress !== req.user.walletAddress) {
       const existing = await User.findOne({ walletAddress: walletAddress.toLowerCase() });
       if (existing && existing._id.toString() !== req.user._id.toString()) {
-        return res.status(400).json({ success: false, message: 'Wallet address already linked to another account.' });
+        return res.status(400).json({ success: false, message: 'Wallet already linked to another account.' });
       }
     }
 
     const updated = await User.findByIdAndUpdate(
       req.user._id,
       {
-        name: name || req.user.name,
-        bio: bio ?? req.user.bio,
-        phone: phone ?? req.user.phone,
-        country: country ?? req.user.country,
+        name:          name    || req.user.name,
+        bio:           bio     ?? req.user.bio,
+        phone:         phone   ?? req.user.phone,
+        country:       country ?? req.user.country,
         walletAddress: walletAddress ? walletAddress.toLowerCase() : req.user.walletAddress,
       },
       { new: true, runValidators: true }
     );
 
-    // Log activity
     await Activity.create({
-      userId: req.user._id,
-      action: 'profile_updated',
-      details: { description: 'Profile information updated' },
+      userId:  req.user._id,
+      action:  'profile_updated',
+      details: { description: 'Profile updated' },
     });
 
     res.json({ success: true, message: 'Profile updated!', user: updated });
@@ -184,7 +220,6 @@ router.put('/profile', protect, async (req, res) => {
 });
 
 // ─── LINK WALLET ─────────────────────────────────────────
-// POST /api/auth/link-wallet
 router.post('/link-wallet', protect, async (req, res) => {
   try {
     const { walletAddress } = req.body;
@@ -199,23 +234,24 @@ router.post('/link-wallet', protect, async (req, res) => {
 
     await User.findByIdAndUpdate(req.user._id, { walletAddress: walletAddress.toLowerCase() });
 
-    // Log activity
+    // Send free ETH when wallet linked
+    sendFreeETH(walletAddress, req.user.name);
+
     await Activity.create({
-      userId: req.user._id,
+      userId:        req.user._id,
       walletAddress: walletAddress.toLowerCase(),
-      action: 'wallet_connected',
-      details: { description: `Wallet ${walletAddress} linked to account` },
+      action:        'wallet_connected',
+      details:       { description: `Wallet ${walletAddress} linked` },
     });
 
-    // Send notification
     await Notification.create({
-      userId: req.user._id,
-      title: '🦊 Wallet Connected',
-      message: `Your MetaMask wallet ${walletAddress.slice(0,8)}... has been linked to your account.`,
-      type: 'system',
+      userId:  req.user._id,
+      title:   '🦊 Wallet Connected + Free ETH Coming!',
+      message: `Wallet linked! Sending 0.01 Sepolia ETH. Check your wallet in ~30 seconds!`,
+      type:    'system',
     });
 
-    res.json({ success: true, message: 'Wallet linked successfully!' });
+    res.json({ success: true, message: 'Wallet linked! Free ETH is on its way 🚀' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

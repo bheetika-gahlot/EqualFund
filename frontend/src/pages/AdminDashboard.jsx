@@ -32,14 +32,11 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const cfg = adminCfg();
-
-      // Fetch stats, users, activities in parallel
       const [statsRes, usersRes, actRes] = await Promise.allSettled([
         api.get('/admin/stats', cfg),
         api.get('/users', cfg),
         api.get('/activity', cfg),
       ]);
-
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data.stats);
       if (usersRes.status === 'fulfilled') {
         const allUsers = usersRes.value.data.users || [];
@@ -47,7 +44,6 @@ export default function AdminDashboard() {
         setPendingKYC(allUsers.filter(u => u.kycStatus === 'pending'));
       }
       if (actRes.status === 'fulfilled') setActivities(actRes.value.data.activities || []);
-
     } catch (e) {
       setToast({ message: 'Failed to load: ' + e.message, type: 'error' });
     } finally {
@@ -93,6 +89,18 @@ export default function AdminDashboard() {
       fetchAll();
     } catch (e) {
       setToast({ message: 'Failed', type: 'error' });
+    }
+  };
+
+  // ── DELETE USER — frees wallet for reuse ──────────────
+  const deleteUser = async (userId, userName) => {
+    if (!window.confirm(`Permanently delete ${userName}?\n\nThis will:\n✅ Free their wallet for reuse\n✅ Remove from all records\n❌ Cannot be undone`)) return;
+    try {
+      await api.delete(`/admin/users/${userId}`, adminCfg());
+      setToast({ message: `🗑️ ${userName} deleted — wallet is now free to reuse!`, type: 'success' });
+      fetchAll();
+    } catch (e) {
+      setToast({ message: 'Delete failed: ' + (e.response?.data?.message || e.message), type: 'error' });
     }
   };
 
@@ -195,11 +203,7 @@ export default function AdminDashboard() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
               <div className="glass-card" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>👥 Recent Users</h3>
-                  <button onClick={() => exportCSV(users.map(u => ({ name: u.name, email: u.email, role: u.role, kyc: u.kycStatus, score: u.creditScore, wallet: u.walletAddress||'', joined: u.createdAt })), 'users')}
-                    style={{ fontSize: '0.72rem', color: '#06b6d4', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>⬇ CSV</button>
-                </div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem' }}>👥 Recent Users</h3>
                 {users.slice(0, 6).map(u => (
                   <div key={u._id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'linear-gradient(135deg,#06b6d4,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'white', flexShrink: 0 }}>
@@ -215,11 +219,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="glass-card" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>📋 Recent Activity</h3>
-                  <button onClick={() => exportCSV(activities.map(a => ({ action: a.action, desc: a.details?.description||'', time: a.createdAt })), 'activity')}
-                    style={{ fontSize: '0.72rem', color: '#06b6d4', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>⬇ CSV</button>
-                </div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem' }}>📋 Recent Activity</h3>
                 {activities.slice(0, 6).map((a, i) => (
                   <div key={i} style={{ display: 'flex', gap: '0.75rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     <span style={{ fontSize: '1rem' }}>{ACTION_ICONS[a.action] || '📌'}</span>
@@ -240,14 +240,11 @@ export default function AdminDashboard() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>🪪 KYC Verification Requests</h2>
-              <button onClick={() => exportCSV(pendingKYC.map(u => ({ name: u.name, email: u.email, wallet: u.walletAddress||'', hash: u.kycIpfsHash, submitted: u.updatedAt })), 'kyc')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', color: '#06b6d4', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>⬇ Export CSV</button>
             </div>
 
             {users.length === 0 && (
               <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>👥</div>
-                <p style={{ color: 'var(--text-secondary)' }}>No users registered yet. Users will appear here after they register.</p>
+                <p style={{ color: 'var(--text-secondary)' }}>No users yet.</p>
               </div>
             )}
 
@@ -261,7 +258,7 @@ export default function AdminDashboard() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {group.map(u => {
-                      const uid = u._id || u.id;
+                      const uid    = u._id || u.id;
                       const hashes = (u.kycIpfsHash || '').split('|').filter(Boolean);
                       return (
                         <div key={uid} className="glass-card" style={{ padding: '1.25rem' }}>
@@ -273,7 +270,7 @@ export default function AdminDashboard() {
                               <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{u.name}</div>
                               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{u.email}</div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                                {u.walletAddress ? `${u.walletAddress.slice(0,12)}...` : 'No wallet linked'}
+                                {u.walletAddress ? `${u.walletAddress.slice(0,12)}...` : 'No wallet'}
                               </div>
                               <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                                 Submitted: {timeAgo(u.updatedAt)}
@@ -364,10 +361,20 @@ export default function AdminDashboard() {
                       <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{u.walletAddress ? `${u.walletAddress.slice(0,8)}...` : '—'}</td>
                       <td style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{new Date(u.createdAt).toLocaleDateString()}</td>
                       <td style={{ padding: '0.75rem' }}>
-                        <button onClick={() => deactivateUser(u._id||u.id, u.name)}
-                          style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer' }}>
-                          Deactivate
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {/* Deactivate Button */}
+                          <button onClick={() => deactivateUser(u._id||u.id, u.name)}
+                            style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer' }}>
+                            Deactivate
+                          </button>
+                          {/* Delete Button — frees wallet for reuse */}
+                          {u.role !== 'admin' && (
+                            <button onClick={() => deleteUser(u._id||u.id, u.name)}
+                              style={{ fontSize: '0.7rem', color: 'white', background: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.5)', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer' }}>
+                              🗑 Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -380,11 +387,7 @@ export default function AdminDashboard() {
         {/* ACTIVITY */}
         {tab === 'activity' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>📋 Activity Log</h2>
-              <button onClick={() => exportCSV(activities.map(a => ({ action: a.action, desc: a.details?.description||'', wallet: a.walletAddress||'', time: a.createdAt })), 'activity')}
-                style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', color: '#06b6d4', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>⬇ Export CSV</button>
-            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '1.5rem' }}>📋 Activity Log</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {activities.map((a, i) => (
                 <div key={i} className="glass-card" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -414,13 +417,14 @@ export default function AdminDashboard() {
 }
 
 function BroadcastNotification({ users, setToast }) {
-  const [form, setForm] = useState({ title: '', message: '', target: 'all' });
+  const [form, setForm]     = useState({ title: '', message: '', target: 'all' });
   const [sending, setSending] = useState(false);
+
   const send = async () => {
     if (!form.title || !form.message) { setToast({ message: 'Fill title and message', type: 'error' }); return; }
     setSending(true);
     try {
-      const cfg = adminCfg();
+      const cfg     = adminCfg();
       const targets = form.target === 'all' ? users : users.filter(u => u.role === form.target);
       await Promise.all(targets.map(u => api.post('/notifications', { userId: u._id||u.id, title: form.title, message: form.message, type: 'system' }, cfg)));
       setToast({ message: `✅ Sent to ${targets.length} users`, type: 'success' });
@@ -428,6 +432,7 @@ function BroadcastNotification({ users, setToast }) {
     } catch { setToast({ message: 'Failed to send', type: 'error' }); }
     finally { setSending(false); }
   };
+
   return (
     <div style={{ maxWidth: '600px' }}>
       <div className="glass-card" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -456,8 +461,17 @@ function BroadcastNotification({ users, setToast }) {
 }
 
 function KYCBadge({ status }) {
-  const c = { verified: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)', label: '✅ Verified' }, pending: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: '⏳ Pending' }, rejected: { color: '#f87171', bg: 'rgba(239,68,68,0.1)', label: '❌ Rejected' }, none: { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', label: '⭕ Not Done' } }[status] || { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', label: '—' };
+  const c = {
+    verified: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   label: '✅ Verified' },
+    pending:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  label: '⏳ Pending'  },
+    rejected: { color: '#f87171', bg: 'rgba(239,68,68,0.1)',   label: '❌ Rejected' },
+    none:     { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', label: '⭕ Not Done' },
+  }[status || 'none'] || { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', label: '—' };
   return <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: c.bg, color: c.color, whiteSpace: 'nowrap' }}>{c.label}</span>;
 }
 
-const ACTION_ICONS = { register: '🆕', login: '🔐', wallet_connected: '🦊', kyc_submitted: '🪪', loan_created: '💸', loan_funded: '💰', loan_repaid: '✅', profile_updated: '✏️', notification_read: '🔔' };
+const ACTION_ICONS = {
+  register: '🆕', login: '🔐', wallet_connected: '🦊',
+  kyc_submitted: '🪪', loan_created: '💸', loan_funded: '💰',
+  loan_repaid: '✅', profile_updated: '✏️', notification_read: '🔔',
+};

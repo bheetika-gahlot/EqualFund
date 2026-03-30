@@ -14,69 +14,74 @@ const STATUS_COLORS = ['#f59e0b', '#06b6d4', '#22c55e', '#ef4444'];
 export default function BorrowerDashboard() {
   const { isConnected, account } = useWallet();
   const { contractService, execute } = useContract();
-  const { user } = useAuth();
-  const [loans, setLoans]       = useState([]);
-  const [history, setHistory]   = useState([]);
-  const [fetching, setFetching] = useState(true);
-  const [toast, setToast]       = useState(null);
-  const [repaying, setRepaying] = useState(null);
+  const { user, updateUser } = useAuth();
+  const [loans, setLoans]         = useState([]);
+  const [history, setHistory]     = useState([]);
+  const [fetching, setFetching]   = useState(true);
+  const [toast, setToast]         = useState(null);
+  const [repaying, setRepaying]   = useState(null);
   const [activeTab, setActiveTab] = useState('active');
+  const [creditScore, setCreditScore] = useState(user?.creditScore || 650);
 
   const fetchLoans = useCallback(async () => {
-    if (!account) return;
+    if (!account || !contractService) return;
     setFetching(true);
     try {
-      // PRIMARY: Read from blockchain (always accurate)
-      if (contractService) {
-        const allLoans = await contractService.getAllLoans();
-        const mine = allLoans.filter(
-          l => l.borrower?.toLowerCase() === account?.toLowerCase()
-        );
+      const allLoans = await contractService.getAllLoans();
+      const mine = allLoans.filter(l => l.borrower?.toLowerCase() === account?.toLowerCase());
 
-        // Enrich with MongoDB data (purpose, category, borrowerName)
-        try {
-          const res = await api.get(`/loans?borrowerAddress=${account.toLowerCase()}`);
-          const mongoLoans = res.data.loans || [];
-
-          const enriched = mine.map(chainLoan => {
-            const mongoLoan = mongoLoans.find(m => m.loanId === chainLoan.id);
-            return {
-              ...chainLoan,
-              purpose:      mongoLoan?.purpose     || '',
-              category:     mongoLoan?.category    || 'other',
-              borrowerName: mongoLoan?.borrowerName|| user?.name || '',
-            };
-          });
-
-          setLoans(enriched.filter(l => l.status !== 2));
-          setHistory(enriched.filter(l => l.status === 2));
-        } catch {
-          // MongoDB not available — use blockchain data only
-          setLoans(mine.filter(l => l.status !== 2));
-          setHistory(mine.filter(l => l.status === 2));
+      // ── FIX: Get live credit score from blockchain ──
+      try {
+        const score = await contractService.getCreditScore(account);
+        if (score && score !== creditScore) {
+          setCreditScore(score);
+          updateUser({ creditScore: score }); // sync to MongoDB too
         }
+      } catch { /* use existing score */ }
+
+      // Enrich with MongoDB
+      try {
+        const res = await api.get(`/loans?borrowerAddress=${account.toLowerCase()}`);
+        const mongoLoans = res.data.loans || [];
+        const enriched = mine.map(chainLoan => {
+          const mongoLoan = mongoLoans.find(m => m.loanId === chainLoan.id);
+          return {
+            ...chainLoan,
+            purpose:      mongoLoan?.purpose      || '',
+            category:     mongoLoan?.category     || 'other',
+            borrowerName: mongoLoan?.borrowerName || user?.name || '',
+          };
+        });
+        setLoans(enriched.filter(l => l.status !== 2));
+        setHistory(enriched.filter(l => l.status === 2));
+      } catch {
+        setLoans(mine.filter(l => l.status !== 2));
+        setHistory(mine.filter(l => l.status === 2));
       }
     } catch (e) {
-      console.error('Failed to fetch loans:', e);
       setToast({ message: 'Failed to load loans: ' + e.message, type: 'error' });
     } finally {
       setFetching(false);
     }
-  }, [account, contractService, user]);
+  }, [account, contractService]);
 
   useEffect(() => {
     if (isConnected && contractService) fetchLoans();
   }, [isConnected, contractService, fetchLoans]);
+
+  // ── AUTO REFRESH every 15 seconds ──────────────────────
+  useEffect(() => {
+    if (!isConnected || !account) return;
+    const timer = setInterval(fetchLoans, 15000);
+    return () => clearInterval(timer);
+  }, [isConnected, account, fetchLoans]);
 
   const handleRepay = async (loan) => {
     if (repaying) return;
     setRepaying(loan.id);
     setToast({ message: '⏳ Confirm repayment in MetaMask...', type: 'loading' });
     try {
-      const totalRepay = (
-        parseFloat(loan.amount) * (1 + parseFloat(loan.interestRate) / 100)
-      ).toFixed(6);
-
+      const totalRepay = (parseFloat(loan.amount) * (1 + parseFloat(loan.interestRate) / 100)).toFixed(6);
       const receipt = await execute(
         contractService.repayLoan.bind(contractService),
         loan.id,
@@ -84,20 +89,18 @@ export default function BorrowerDashboard() {
         loan.interestRate
       );
 
-      // Save repayment to MongoDB
+      // Save to MongoDB
       try {
         await api.post(`/loans/${loan.id}/repay`, {
           repaidAmount:    totalRepay,
           borrowerAddress: account,
-        }, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('ef-token')}` }
-        });
-      } catch (e) {
-        console.warn('MongoDB repayment save failed:', e.message);
-      }
+        }, { headers: { Authorization: `Bearer ${localStorage.getItem('ef-token')}` } });
+      } catch (e) { console.warn('Repayment save failed:', e.message); }
 
       setToast({ message: `✅ Repaid ${totalRepay} ETH!`, type: 'success', txHash: receipt?.hash });
-      fetchLoans();
+
+      // Refresh immediately to show updated credit score
+      setTimeout(fetchLoans, 3000);
     } catch (e) {
       setToast({ message: e.message || 'Repayment failed', type: 'error' });
     } finally {
@@ -117,13 +120,18 @@ export default function BorrowerDashboard() {
           <div>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>My Loans</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              Credit Score: <strong style={{ color: '#06b6d4' }}>{user?.creditScore || 650}</strong>
+              Credit Score: <strong style={{ color: creditScore >= 700 ? '#22c55e' : creditScore >= 600 ? '#06b6d4' : '#f59e0b' }}>{creditScore}</strong>
               {' · '}Wallet: <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{account?.slice(0,8)}...{account?.slice(-4)}</span>
             </p>
           </div>
-          <Link to="/create-loan" className="btn-primary" style={{ textDecoration: 'none', padding: '0.75rem 1.5rem' }}>
-            + New Loan Request
-          </Link>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={fetchLoans} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', color: '#06b6d4', cursor: 'pointer', fontSize: '0.8rem' }}>
+              🔄 Refresh
+            </button>
+            <Link to="/create-loan" className="btn-primary" style={{ textDecoration: 'none', padding: '0.75rem 1.5rem' }}>
+              + New Loan Request
+            </Link>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -145,7 +153,7 @@ export default function BorrowerDashboard() {
         </div>
 
         {fetching ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>⏳ Loading loans from blockchain...</div>
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>⏳ Loading from blockchain...</div>
         ) : activeTab === 'active' ? (
           loans.length === 0 ? (
             <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
@@ -177,11 +185,10 @@ export default function BorrowerDashboard() {
 }
 
 function LoanCard({ loan, onRepay, repaying, isHistory }) {
-  const [showInvestors, setShowInvestors] = useState(false);
-  const totalRepay = (parseFloat(loan.amount||0) * (1 + parseFloat(loan.interestRate||0)/100)).toFixed(4);
-  const fundedPct  = loan.amount ? Math.min(100, (parseFloat(loan.fundedAmount||0) / parseFloat(loan.amount)) * 100) : 0;
-  const isActive   = loan.status === 1;
-  const isRepaid   = loan.status === 2;
+  const totalRepay  = (parseFloat(loan.amount||0) * (1 + parseFloat(loan.interestRate||0)/100)).toFixed(4);
+  const fundedPct   = loan.amount ? Math.min(100,(parseFloat(loan.fundedAmount||0)/parseFloat(loan.amount))*100) : 0;
+  const isActive    = loan.status === 1;
+  const isRepaid    = loan.status === 2;
   const statusColor = STATUS_COLORS[loan.status] || '#6b7280';
 
   let daysLeft = null;
@@ -195,7 +202,6 @@ function LoanCard({ loan, onRepay, repaying, isHistory }) {
     <div className="glass-card" style={{ padding: '1.5rem', border: isActive && daysLeft !== null && daysLeft <= 3 ? '1px solid rgba(239,68,68,0.4)' : '1px solid var(--border)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ flex: 1 }}>
-          {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-primary)' }}>Loan #{loan.id}</span>
             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 10px', borderRadius: '99px', background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40` }}>
@@ -214,7 +220,6 @@ function LoanCard({ loan, onRepay, repaying, isHistory }) {
             </p>
           )}
 
-          {/* Numbers */}
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.85rem', marginBottom: '1rem' }}>
             {[
               ['Amount',      `${parseFloat(loan.amount).toFixed(2)} ETH`, '#06b6d4'],
@@ -222,16 +227,14 @@ function LoanCard({ loan, onRepay, repaying, isHistory }) {
               ['Duration',    `${loan.duration} days`,                     'var(--text-primary)'],
               ['Total Repay', `${totalRepay} ETH`,                        '#22c55e'],
               ...(daysLeft !== null ? [['Days Left', daysLeft <= 0 ? '🚨 OVERDUE' : `${daysLeft}d`, daysLeft <= 3 ? '#ef4444' : daysLeft <= 7 ? '#f59e0b' : '#22c55e']] : []),
-              ...(isRepaid && loan.repaidAt ? [['Repaid On', new Date(loan.repaidAt).toLocaleDateString(), '#22c55e']] : []),
             ].map(([label, val, color]) => (
               <div key={label}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', marginBottom: '2px' }}>{label}</div>
-                <div style={{ fontWeight: 700, color, fontFamily: typeof val === 'string' && val.includes('ETH') ? 'monospace' : 'inherit' }}>{val}</div>
+                <div style={{ fontWeight: 700, color, fontFamily: val.includes('ETH') ? 'monospace' : 'inherit' }}>{val}</div>
               </div>
             ))}
           </div>
 
-          {/* Progress */}
           {!isRepaid && (
             <div style={{ marginBottom: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.375rem' }}>
@@ -239,29 +242,23 @@ function LoanCard({ loan, onRepay, repaying, isHistory }) {
                 <span>{fundedPct.toFixed(0)}%</span>
               </div>
               <div style={{ height: '5px', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${fundedPct}%`, background: fundedPct >= 100 ? '#22c55e' : 'linear-gradient(90deg,#06b6d4,#8b5cf6)', borderRadius: '99px', transition: 'width 0.5s' }} />
+                <div style={{ height: '100%', width: `${fundedPct}%`, background: fundedPct >= 100 ? '#22c55e' : 'linear-gradient(90deg,#06b6d4,#8b5cf6)', borderRadius: '99px' }} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Repay Button */}
         {isActive && onRepay && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-            <button onClick={onRepay} disabled={!!repaying}
-              style={{
-                padding: '0.875rem 1.75rem', borderRadius: '12px', border: 'none',
-                background: repaying ? 'rgba(34,197,94,0.3)' : daysLeft !== null && daysLeft <= 0 ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'linear-gradient(135deg,#22c55e,#16a34a)',
-                color: 'white', fontWeight: 800, fontSize: '0.9rem',
-                cursor: repaying ? 'not-allowed' : 'pointer',
-                boxShadow: '0 0 20px rgba(34,197,94,0.2)', whiteSpace: 'nowrap',
-              }}>
-              {repaying ? '⏳ Processing...' : `💸 Repay ${totalRepay} ETH`}
-            </button>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-              Principal + {loan.interestRate}% interest
-            </div>
-          </div>
+          <button onClick={onRepay} disabled={!!repaying}
+            style={{
+              padding: '0.875rem 1.75rem', borderRadius: '12px', border: 'none',
+              background: repaying ? 'rgba(34,197,94,0.3)' : daysLeft !== null && daysLeft <= 0 ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'linear-gradient(135deg,#22c55e,#16a34a)',
+              color: 'white', fontWeight: 800, fontSize: '0.9rem',
+              cursor: repaying ? 'not-allowed' : 'pointer',
+              boxShadow: '0 0 20px rgba(34,197,94,0.2)', whiteSpace: 'nowrap',
+            }}>
+            {repaying ? '⏳ Processing...' : `💸 Repay ${totalRepay} ETH`}
+          </button>
         )}
 
         {isRepaid && (

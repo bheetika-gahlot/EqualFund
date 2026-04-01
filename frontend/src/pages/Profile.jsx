@@ -1,295 +1,197 @@
+// Profile.jsx — redesigned with new design system
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../hooks/useWallet';
-import { useContract } from '../hooks/useContract';
 import { useAuth } from '../context/AuthContext';
-import ConnectWalletPrompt from '../components/ConnectWalletPrompt';
-import { Link } from 'react-router-dom';
+import GeoBg from '../components/GeoBg';
+import Toast from '../components/Toast';
 import api from '../services/apiService';
 
 export default function Profile() {
-  const { isConnected, account, balance } = useWallet();
-  const { contractService } = useContract();
+  const { account, balance, isConnected } = useWallet();
   const { user } = useAuth();
-  const [loans, setLoans]             = useState([]);
-  const [investments, setInvestments] = useState([]);
-  const [creditScore, setCreditScore] = useState(user?.creditScore || 650);
-  const [fetching, setFetching]       = useState(false);
+  const [loans, setLoans]   = useState([]);
+  const [toast, setToast]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm]     = useState({ name:'', bio:'', phone:'', country:'' });
 
   useEffect(() => {
-    if (!isConnected || !account || !contractService) return;
+    if (user) setForm({ name:user.name||'', bio:user.bio||'', phone:user.phone||'', country:user.country||'' });
+  }, [user]);
 
-    const load = async () => {
-      setFetching(true);
+  useEffect(() => {
+    const fetchHistory = async () => {
       try {
-        // Load from blockchain
-        const [allLoans, invs, score] = await Promise.allSettled([
-          contractService.getAllLoans(),
-          contractService.getLenderInvestments(account),
-          contractService.getCreditScore(account),
-        ]);
-
-        if (allLoans.status === 'fulfilled') {
-          const mine = (allLoans.value || []).filter(
-            l => l.borrower?.toLowerCase() === account?.toLowerCase()
-          );
-          setLoans(mine);
-        }
-
-        if (invs.status === 'fulfilled') {
-          setInvestments(invs.value || []);
-        }
-
-        if (score.status === 'fulfilled') {
-          setCreditScore(score.value || 650);
-        }
-      } catch (e) {
-        console.warn('Profile load error:', e.message);
-      } finally {
-        setFetching(false);
-      }
+        const token = localStorage.getItem('ef-token');
+        if (!token) return;
+        const res = await api.get('/loans', { headers:{ Authorization:`Bearer ${token}` }});
+        setLoans(res.data.loans || []);
+      } catch {}
+      finally { setLoading(false); }
     };
+    fetchHistory();
+  }, []);
 
-    load();
-  }, [isConnected, account, contractService]);
+  const saveProfile = async () => {
+    try {
+      const token = localStorage.getItem('ef-token');
+      await api.put('/auth/profile', form, { headers:{ Authorization:`Bearer ${token}` }});
+      setToast({ message:'✅ Profile updated!', type:'success' });
+      setEditMode(false);
+    } catch (e) {
+      setToast({ message:'Failed: ' + e.message, type:'error' });
+    }
+  };
 
-  if (!isConnected) return <ConnectWalletPrompt message="Connect wallet to view your profile." />;
-
-  const totalBorrowed = loans.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
-  const totalInvested = investments.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-  const repaidLoans   = loans.filter(l => l.status === 2 || l.statusLabel === 'Repaid').length;
-  const activeLoans   = loans.filter(l => l.status === 1 || l.statusLabel === 'Active').length;
-
-  // Credit score color
-  const scoreColor = creditScore >= 750 ? '#22c55e' : creditScore >= 650 ? '#06b6d4' : creditScore >= 550 ? '#f59e0b' : '#ef4444';
-  const scoreLabel = creditScore >= 750 ? '🏆 Excellent' : creditScore >= 650 ? '💎 Good' : creditScore >= 550 ? '🟡 Fair' : '🔴 Poor';
+  const scoreColor = (s) => s>=750?'var(--mint-dim)':s>=650?'#06b6d4':s>=550?'#f59e0b':'#ef4444';
+  const scorePct   = (s) => ((s-300)/550)*100;
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-        My Profile
-      </h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.875rem' }}>
-        Your complete EqualFund activity
-      </p>
+    <div className="page" style={{ position:'relative', minHeight:'100vh' }}>
+      <GeoBg />
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
-      {/* Profile Header */}
-      <div className="glass-card" style={{ padding: '1.75rem', marginBottom: '1.25rem', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, right: 0, width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(6,182,212,0.06), transparent)', pointerEvents: 'none' }} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5rem' }}>
-          <div style={{
-            width: '72px', height: '72px', borderRadius: '20px',
-            background: 'linear-gradient(135deg,#06b6d4,#8b5cf6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.75rem', fontWeight: 800, color: 'white',
-            boxShadow: '0 8px 24px rgba(6,182,212,0.3)', flexShrink: 0,
-          }}>
-            {user?.name ? user.name[0].toUpperCase() : account?.slice(2, 4).toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: '200px' }}>
-            {user?.name && <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{user.name}</div>}
-            {user?.email && <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.375rem' }}>{user.email}</div>}
-            <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#06b6d4', wordBreak: 'break-all' }}>{account}</div>
-            <div style={{ marginTop: '0.5rem' }}>
-              <KYCStatusBadge status={user?.kycStatus} />
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>ETH Balance</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#06b6d4', fontFamily: 'monospace' }}>
-              {parseFloat(balance || 0).toFixed(4)} ETH
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="container" style={{ padding:'2.5rem 1.5rem' }}>
+        <h1 style={{ fontSize:'clamp(1.75rem,4vw,2.5rem)', fontWeight:900, color:'var(--ink)', letterSpacing:'-0.04em', marginBottom:'2.5rem' }}>My Profile</h1>
 
-      {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.875rem', marginBottom: '1.25rem' }}>
-        {[
-          { label: 'Total Loans',  value: loans.length,                    icon: '📋', color: '#06b6d4' },
-          { label: 'Active Loans', value: activeLoans,                     icon: '⚡', color: '#f59e0b' },
-          { label: 'Repaid',       value: repaidLoans,                     icon: '✅', color: '#10b981' },
-          { label: 'Borrowed',     value: `${totalBorrowed.toFixed(3)} Ξ`, icon: '💸', color: '#8b5cf6' },
-          { label: 'Invested',     value: `${totalInvested.toFixed(3)} Ξ`, icon: '📈', color: '#06b6d4' },
-          { label: 'Investments',  value: investments.length,              icon: '🏦', color: '#f59e0b' },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
-            <span style={{ fontSize: '1.3rem' }}>{s.icon}</span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
-            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: s.color }}>{s.value}</span>
-          </div>
-        ))}
-      </div>
+        <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:'1.5rem', alignItems:'start' }}>
 
-      {/* Credit Score */}
-      <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
-          📊 Credit Score
-        </h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-          <div style={{
-            width: '80px', height: '80px', borderRadius: '50%', flexShrink: 0,
-            background: `conic-gradient(${scoreColor} ${((creditScore - 300) / 550) * 360}deg, rgba(255,255,255,0.07) 0deg)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
-          }}>
-            <div style={{
-              width: '62px', height: '62px', borderRadius: '50%',
-              background: 'var(--bg-secondary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexDirection: 'column',
-            }}>
-              <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1rem', color: scoreColor, lineHeight: 1 }}>{creditScore}</span>
-              <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>/ 850</span>
-            </div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: scoreColor, marginBottom: '0.375rem' }}>{scoreLabel}</div>
-            <div style={{ height: '6px', background: 'rgba(255,255,255,0.07)', borderRadius: '3px', marginBottom: '0.5rem' }}>
-              <div style={{ height: '100%', width: `${((creditScore - 300) / 550) * 100}%`, background: `linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)`, borderRadius: '3px', transition: 'width 0.8s ease' }} />
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              {creditScore >= 700 ? '✅ Eligible for larger loans with better rates' : '💡 Repay loans on time to improve your score'}
-            </div>
-          </div>
-        </div>
-      </div>
+          {/* LEFT — Identity card */}
+          <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
 
-      {/* KYC Section */}
-      <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem' }}>
-          🪪 KYC Verification
-        </h3>
-        {user?.kycStatus === 'verified' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>✅</div>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{user.name}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Identity verified · Can create loan requests</div>
-            </div>
-            <span style={{ marginLeft: 'auto', padding: '0.2rem 0.75rem', borderRadius: '99px', fontSize: '0.72rem', fontWeight: 700, background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
-              ✅ Verified
-            </span>
-          </div>
-        ) : user?.kycStatus === 'pending' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>⏳</div>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Under Review</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Your documents are being verified (24-48 hrs)</div>
-            </div>
-            <span style={{ marginLeft: 'auto', padding: '0.2rem 0.75rem', borderRadius: '99px', fontSize: '0.72rem', fontWeight: 700, background: 'rgba(234,179,8,0.1)', color: '#fbbf24', border: '1px solid rgba(234,179,8,0.2)' }}>
-              ⏳ Pending
-            </span>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.25rem' }}>KYC not submitted yet</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Complete KYC to start borrowing</div>
-            </div>
-            <Link to="/kyc" className="btn-primary" style={{ textDecoration: 'none', padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
-              Complete KYC →
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Loading */}
-      {fetching && (
-        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-          ⏳ Loading blockchain data...
-        </div>
-      )}
-
-      {/* Loan History */}
-      {loans.length > 0 && (
-        <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem' }}>
-            📋 Loan History ({loans.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {loans.map(loan => {
-              const statusLabel = loan.statusLabel || ['Pending','Active','Repaid','Defaulted'][loan.status] || 'Unknown';
-              const statusColor = { Pending:'#f59e0b', Active:'#06b6d4', Repaid:'#22c55e', Defaulted:'#ef4444' }[statusLabel] || '#6b7280';
-              return (
-                <div key={loan.id} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '0.75rem', background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '10px', border: '1px solid var(--border)',
-                  gap: '1rem', flexWrap: 'wrap',
-                }}>
-                  <span style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>Loan #{loan.id}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{parseFloat(loan.amount).toFixed(4)} ETH</span>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40` }}>
-                    {statusLabel}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Investment History */}
-      {investments.length > 0 && (
-        <div className="glass-card" style={{ padding: '1.25rem' }}>
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem' }}>
-            📈 Investment History ({investments.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {investments.map((inv, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '0.75rem', background: 'rgba(255,255,255,0.03)',
-                borderRadius: '10px', border: '1px solid var(--border)',
-                gap: '1rem', flexWrap: 'wrap',
-              }}>
-                <span style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>Loan #{inv.loanId}</span>
-                <span style={{ fontWeight: 700, color: '#8b5cf6', fontFamily: 'monospace' }}>{parseFloat(inv.amount).toFixed(4)} ETH</span>
-                <span style={{
-                  padding: '2px 8px', borderRadius: '99px', fontSize: '0.7rem', fontWeight: 700,
-                  background: inv.repaid ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
-                  color: inv.repaid ? '#22c55e' : '#fbbf24',
-                  border: `1px solid ${inv.repaid ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
-                }}>
-                  {inv.repaid ? '✓ Repaid' : '⏳ Pending'}
-                </span>
+            {/* Avatar + info */}
+            <div className="card" style={{ padding:'1.75rem', textAlign:'center' }}>
+              {/* Avatar */}
+              <div style={{ width:'72px', height:'72px', borderRadius:'18px', background:'var(--mint-pale)', border:'2px solid rgba(0,232,122,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.75rem', fontWeight:900, color:'var(--mint-dim)', margin:'0 auto 1rem' }}>
+                {(user?.name||'?')[0].toUpperCase()}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <h2 style={{ fontSize:'1.1rem', fontWeight:900, color:'var(--ink)', marginBottom:'4px', letterSpacing:'-0.02em' }}>{user?.name || 'Anonymous'}</h2>
+              <p style={{ fontSize:'12px', color:'var(--ink-3)', marginBottom:'12px' }}>{user?.email}</p>
+              {user?.kycStatus === 'verified' && <span className="pill pill-mint" style={{ margin:'0 auto 12px', display:'inline-flex' }}>✅ KYC Verified</span>}
+              <div style={{ fontFamily:'monospace', fontSize:'11px', color:'var(--ink-3)', background:'var(--surface-3)', padding:'6px 10px', borderRadius:'8px' }}>
+                {account ? `${account.slice(0,10)}...${account.slice(-6)}` : 'No wallet linked'}
+              </div>
+            </div>
 
-      {/* Empty state */}
-      {!fetching && loans.length === 0 && investments.length === 0 && (
-        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚀</div>
-          <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No activity yet</h3>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Create a loan request or fund someone else's loan to get started.</p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to="/create-loan" className="btn-primary" style={{ textDecoration: 'none', padding: '0.75rem 1.5rem' }}>💸 Create Loan</Link>
-            <Link to="/marketplace" className="btn-secondary" style={{ textDecoration: 'none', padding: '0.75rem 1.5rem' }}>🏪 Browse Marketplace</Link>
+            {/* Credit score */}
+            <div className="card" style={{ padding:'1.5rem' }}>
+              <div style={{ fontSize:'11px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'1rem' }}>🧠 Credit Score</div>
+              <div style={{ display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1rem' }}>
+                <div style={{ position:'relative', width:'70px', height:'70px', flexShrink:0 }}>
+                  <svg width="70" height="70" style={{ transform:'rotate(-90deg)' }}>
+                    <circle cx="35" cy="35" r="28" fill="none" stroke="var(--border)" strokeWidth="6" />
+                    <circle cx="35" cy="35" r="28" fill="none" stroke={scoreColor(user?.creditScore||650)} strokeWidth="6"
+                      strokeDasharray={`${2*Math.PI*28}`}
+                      strokeDashoffset={`${2*Math.PI*28*(1-scorePct(user?.creditScore||650)/100)}`}
+                      strokeLinecap="round" style={{ transition:'stroke-dashoffset 1s ease' }} />
+                  </svg>
+                  <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'monospace', fontWeight:900, fontSize:'15px', color:scoreColor(user?.creditScore||650) }}>
+                    {user?.creditScore || 650}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontWeight:800, color:scoreColor(user?.creditScore||650), fontSize:'15px' }}>
+                    {(user?.creditScore||650)>=750?'Excellent':(user?.creditScore||650)>=650?'Good':(user?.creditScore||650)>=550?'Fair':'Poor'}
+                  </div>
+                  <div style={{ fontSize:'12px', color:'var(--ink-3)', marginTop:'3px' }}>300–850 scale</div>
+                </div>
+              </div>
+              <div style={{ height:'5px', borderRadius:'99px', background:'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)', position:'relative' }}>
+                <div style={{ position:'absolute', top:'-3px', left:`${scorePct(user?.creditScore||650)}%`, width:'11px', height:'11px', borderRadius:'50%', background:'var(--card-bg)', border:`2px solid ${scoreColor(user?.creditScore||650)}`, transform:'translateX(-50%)' }} />
+              </div>
+            </div>
+
+            {/* Wallet info */}
+            {isConnected && (
+              <div className="card" style={{ padding:'1.25rem' }}>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'0.875rem' }}>💼 Wallet</div>
+                <div style={{ fontSize:'1.25rem', fontWeight:900, color:'var(--ink)', fontFamily:'monospace', letterSpacing:'-0.03em' }}>{parseFloat(balance||0).toFixed(4)} ETH</div>
+                <div style={{ fontSize:'11px', color:'var(--ink-3)', marginTop:'3px' }}>Sepolia Balance</div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — Details + history */}
+          <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
+
+            {/* Edit profile */}
+            <div className="card" style={{ padding:'1.75rem' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
+                <div style={{ fontSize:'13px', fontWeight:700, color:'var(--ink)' }}>👤 Profile Info</div>
+                <button onClick={() => editMode ? saveProfile() : setEditMode(true)}
+                  className={`btn btn-sm ${editMode ? 'btn-mint' : 'btn-out'}`}
+                  style={editMode ? { color:'#000000' } : {}}>
+                  {editMode ? '✅ Save' : '✏️ Edit'}
+                </button>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                {[
+                  { l:'Full Name', k:'name', t:'text' },
+                  { l:'Phone', k:'phone', t:'tel' },
+                  { l:'Country', k:'country', t:'text' },
+                  { l:'Role', k:null, t:'text', v:user?.role },
+                ].map(f => (
+                  <div key={f.l}>
+                    <label className="lbl">{f.l}</label>
+                    {editMode && f.k ? (
+                      <input type={f.t} value={form[f.k]} onChange={e => setForm(p => ({...p,[f.k]:e.target.value}))} className="input-f" />
+                    ) : (
+                      <div style={{ padding:'0.625rem 0', fontSize:'14px', fontWeight:600, color:'var(--ink)' }}>
+                        {f.v || (f.k ? (form[f.k] || '—') : '—')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {editMode && (
+                <div style={{ marginTop:'1rem' }}>
+                  <label className="lbl">Bio</label>
+                  <textarea value={form.bio} onChange={e => setForm(p => ({...p,bio:e.target.value}))} className="input-f" rows={2} style={{ resize:'vertical' }} placeholder="Tell lenders about yourself..." />
+                </div>
+              )}
+              {!editMode && user?.bio && (
+                <div style={{ marginTop:'1rem', padding:'0.875rem', background:'var(--surface-3)', borderRadius:'10px', fontSize:'13px', color:'var(--ink-3)', lineHeight:1.6 }}>
+                  {user.bio}
+                </div>
+              )}
+              {editMode && (
+                <button onClick={() => setEditMode(false)} className="btn btn-out btn-sm" style={{ marginTop:'10px' }}>Cancel</button>
+              )}
+            </div>
+
+            {/* Repayment history */}
+            <div className="card" style={{ padding:'1.75rem' }}>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--ink)', marginBottom:'1.25rem' }}>📊 Loan History</div>
+              {loading ? (
+                <div style={{ color:'var(--ink-3)', fontSize:'13px' }}>Loading...</div>
+              ) : loans.length === 0 ? (
+                <div style={{ color:'var(--ink-3)', fontSize:'13px' }}>No loan history yet.</div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                  {loans.map((loan, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px', background:'var(--surface-3)', borderRadius:'10px' }}>
+                      <div style={{ width:'8px', height:'8px', borderRadius:'50%', background:loan.status===2?'var(--mint)':loan.status===3?'#ef4444':'#f59e0b', flexShrink:0 }} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:'13px', fontWeight:700, color:'var(--ink)' }}>Loan #{loan.loanId}</div>
+                        <div style={{ fontSize:'11px', color:'var(--ink-3)' }}>{loan.category} · {loan.duration}d</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:'13px', fontWeight:800, color:'var(--ink)', fontFamily:'monospace' }}>{parseFloat(loan.amount||0).toFixed(4)} ETH</div>
+                        <div style={{ fontSize:'11px', color:loan.status===2?'var(--mint-dim)':loan.status===3?'#ef4444':'#f59e0b', fontWeight:700 }}>
+                          {loan.status===2?'✅ Repaid':loan.status===3?'🔴 Default':'⏳ Active'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Responsive */}
+      <style>{`@media(max-width:768px){.profile-grid{grid-template-columns:1fr!important}}`}</style>
     </div>
-  );
-}
-
-function KYCStatusBadge({ status }) {
-  const config = {
-    verified: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.2)',   label: '✅ KYC Verified' },
-    pending:  { color: '#fbbf24', bg: 'rgba(234,179,8,0.1)',   border: 'rgba(234,179,8,0.2)',   label: '⏳ KYC Pending'  },
-    rejected: { color: '#f87171', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.2)',   label: '❌ KYC Rejected' },
-    none:     { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.2)', label: '⭕ KYC Required' },
-  }[status || 'none'];
-
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 10px', borderRadius: '99px', fontSize: '0.72rem', fontWeight: 700,
-      background: config.bg, color: config.color, border: `1px solid ${config.border}`,
-    }}>
-      {config.label}
-    </span>
   );
 }

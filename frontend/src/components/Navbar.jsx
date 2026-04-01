@@ -1,142 +1,154 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import NotificationBell from './NotificationBell';
 import WalletDropdown from './WalletDropdown';
 
 export default function Navbar() {
-  const { theme, toggleTheme } = useTheme();
   const { user, logout, isLoggedIn } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
+  const location  = useLocation();
+  const navigate  = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  const navLinks = [
-    { to: '/', label: 'Home' },
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const links = [
+    { to: '/',            label: 'Home'        },
     { to: '/marketplace', label: 'Marketplace' },
-    { to: '/borrow', label: 'Borrow' },
-    { to: '/lend', label: 'Lend' },
-    { to: '/ngo', label: '🤝 NGO' },
-    { to: '/kyc', label: 'KYC' },
+    { to: '/borrow',      label: 'Borrow'      },
+    { to: '/lend',        label: 'Lend'        },
+    { to: '/ngo',         label: '🤝 NGO'      },
+    { to: '/kyc',         label: 'KYC'         },
+    ...(isLoggedIn ? [{ to: '/profile', label: 'Profile' }] : []),
   ];
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => { logout(); navigate('/login'); setMenuOpen(false); };
+  const active = (to) => location.pathname === to;
 
   return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 50,
-      borderBottom: '1px solid var(--border)',
-      background: theme === 'dark' ? 'rgba(10,15,30,0.85)' : 'rgba(240,249,255,0.85)',
-      backdropFilter: 'blur(20px)',
-    }}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px' }}>
+    <nav className="navbar" style={{ boxShadow: scrolled ? '0 2px 20px rgba(0,0,0,0.08)' : 'none' }}>
 
-          {/* Logo */}
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '10px',
-              background: 'linear-gradient(135deg,#06b6d4,#8b5cf6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 20px rgba(6,182,212,0.3)',
-            }}>
-              <svg style={{ width: '20px', height: '20px', color: 'white' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <span style={{ fontWeight: 800, fontSize: '1.15rem', background: 'linear-gradient(135deg,#06b6d4,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              EqualFund
-            </span>
-          </Link>
+      {/* Logo */}
+      <Link to="/" className="navbar-logo">
+        <div className="navbar-logo-mark"><span>E</span></div>
+        EqualFund
+      </Link>
 
-          {/* Desktop Nav Links */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            {navLinks.map(({ to, label }) => (
-              <Link key={to} to={to} className={`nav-link ${location.pathname === to ? 'active' : ''}`}>
-                {label}
-              </Link>
-            ))}
-            {isLoggedIn && user?.role === 'admin' && (
-              <Link to="/admin" className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}>Admin</Link>
-            )}
-            {isLoggedIn && (
-              <Link to="/profile" className={`nav-link ${location.pathname === '/profile' ? 'active' : ''}`}>Profile</Link>
-            )}
+      {/* Desktop links */}
+      <ul className="navbar-links" style={{ display: 'flex' }}>
+        {links.map(({ to, label }) => (
+          <li key={to}>
+            <Link to={to} className={active(to) ? 'active' : ''}>{label}</Link>
+          </li>
+        ))}
+        {isLoggedIn && user?.role === 'admin' && (
+          <li><Link to="/admin" className={active('/admin') ? 'active' : ''}>Admin</Link></li>
+        )}
+      </ul>
+
+      {/* Right side */}
+      <div className="navbar-right">
+
+        {/* Theme toggle */}
+        <button className="theme-toggle" onClick={toggleTheme} title="Toggle dark/light mode">
+          <div className="toggle-knob">
+            {theme === 'dark' ? '🌙' : '☀️'}
           </div>
+        </button>
 
-          {/* Right Side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+        <NotificationBell />
 
-            {/* Theme Toggle */}
-            <button onClick={toggleTheme}
-              style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1rem', transition: 'all 0.2s',
-              }}>
-              {theme === 'dark' ? '☀️' : '🌙'}
+        {/* Auth */}
+        {isLoggedIn ? (
+          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            <span style={{ fontSize:'13px', color:'var(--ink-3)' }}>
+              👤 {user?.name?.split(' ')[0]}
+            </span>
+            <button onClick={handleLogout}
+              className="btn btn-out btn-sm"
+              style={{ color:'var(--btn-out-text)' }}>
+              Logout
             </button>
+          </div>
+        ) : (
+          <Link to="/login"
+            className="btn btn-out btn-sm"
+            style={{ color:'var(--btn-out-text)' }}>
+            Login
+          </Link>
+        )}
 
-            {/* Notifications */}
-            <NotificationBell />
+        {/* Wallet — FIXED: mint bg + black text always */}
+        <WalletDropdown />
 
-            {/* Auth */}
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setMenuOpen(!menuOpen)}
+          style={{
+            display:'none', width:'36px', height:'36px', borderRadius:'8px',
+            background:'var(--surface-3)', border:'1px solid var(--border)',
+            cursor:'pointer', alignItems:'center', justifyContent:'center',
+            color:'var(--ink)', fontSize:'1.1rem',
+          }}
+          className="mobile-menu-btn">
+          {menuOpen ? '✕' : '☰'}
+        </button>
+      </div>
+
+      {/* Mobile menu */}
+      {menuOpen && (
+        <div style={{
+          position:'absolute', top:'58px', left:0, right:0,
+          background:'var(--nav-bg)', borderBottom:'1px solid var(--border)',
+          padding:'1rem', display:'flex', flexDirection:'column', gap:'4px',
+          backdropFilter:'blur(20px)', zIndex:200,
+        }}>
+          {links.map(({ to, label }) => (
+            <Link key={to} to={to} onClick={() => setMenuOpen(false)}
+              style={{
+                padding:'0.75rem 1rem', borderRadius:'10px', fontSize:'14px',
+                fontWeight: active(to) ? 700 : 500,
+                color: active(to) ? 'var(--mint-dim)' : 'var(--ink)',
+                background: active(to) ? 'var(--mint-pale)' : 'transparent',
+              }}>
+              {label}
+            </Link>
+          ))}
+          <div style={{ borderTop:'1px solid var(--border)', marginTop:'8px', paddingTop:'12px', display:'flex', flexDirection:'column', gap:'8px' }}>
             {isLoggedIn ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  👤 {user?.name?.split(' ')[0]}
-                </span>
-                <button onClick={handleLogout} className="btn-secondary"
-                  style={{ padding: '0.4rem 0.875rem', fontSize: '0.8rem' }}>
-                  Logout
-                </button>
-              </div>
+              <button onClick={handleLogout}
+                className="btn btn-out"
+                style={{ width:'100%', justifyContent:'center', color:'var(--btn-out-text)' }}>
+                Logout
+              </button>
             ) : (
-              <Link to="/login" className="btn-secondary"
-                style={{ padding: '0.4rem 0.875rem', fontSize: '0.8rem', textDecoration: 'none' }}>
-                Login
+              <Link to="/login" onClick={() => setMenuOpen(false)}
+                className="btn btn-dark"
+                style={{ width:'100%', justifyContent:'center' }}>
+                Login / Register
               </Link>
             )}
-
-            {/* Wallet Dropdown */}
-            <WalletDropdown />
-
-            {/* Mobile Toggle */}
-            <button onClick={() => setMenuOpen(!menuOpen)}
-              style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--text-secondary)', fontSize: '1.1rem',
-              }}>
-              {menuOpen ? '✕' : '☰'}
+            <button onClick={() => { toggleTheme(); setMenuOpen(false); }}
+              style={{ padding:'0.75rem', borderRadius:'10px', background:'var(--surface-3)', border:'1px solid var(--border)', color:'var(--ink)', cursor:'pointer', fontWeight:600, fontSize:'14px' }}>
+              {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
             </button>
           </div>
         </div>
+      )}
 
-        {/* Mobile Menu */}
-        {menuOpen && (
-          <div style={{
-            borderTop: '1px solid var(--border)', padding: '0.75rem 0 1rem',
-            display: 'flex', flexDirection: 'column', gap: '0.25rem',
-            animation: 'fadeInUp 0.2s ease',
-          }}>
-            {navLinks.map(({ to, label }) => (
-              <Link key={to} to={to} onClick={() => setMenuOpen(false)}
-                style={{
-                  padding: '0.625rem 0.75rem', borderRadius: '10px',
-                  fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none',
-                  color: location.pathname === to ? '#06b6d4' : 'var(--text-secondary)',
-                  background: location.pathname === to ? 'rgba(6,182,212,0.08)' : 'transparent',
-                }}>
-                {label}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
+      <style>{`
+        @media(max-width:768px){
+          .navbar-links { display:none !important; }
+          .mobile-menu-btn { display:flex !important; }
+        }
+      `}</style>
     </nav>
   );
 }

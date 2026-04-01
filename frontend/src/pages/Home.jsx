@@ -1,145 +1,295 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useWallet } from '../hooks/useWallet';
+import GeoBg from '../components/GeoBg';
+
+const TECH = ['Ethereum','Solidity','IPFS','MetaMask','Hardhat','OpenZeppelin','Pinata','Ethers.js','MongoDB','Razorpay','Vercel','Web3'];
+const LOANS = [
+  { t:'Education Loan', a:'0.50 ETH', r:'5%', s:'Repaid', by:'Priya S.' },
+  { t:'MSME Capital', a:'2.00 ETH', r:'8%', s:'Active', by:'Raj Enterprises' },
+  { t:'Medical Fund', a:'0.30 ETH', r:'3%', s:'Repaid', by:'Anita P.' },
+  { t:'Housing Loan', a:'5.00 ETH', r:'7%', s:'Active', by:'Sharma Family' },
+  { t:'Startup Seed', a:'1.00 ETH', r:'10%', s:'Repaid', by:'TechFlow Inc.' },
+  { t:'Emergency Fund', a:'0.10 ETH', r:'2%', s:'Repaid', by:'Ravi K.' },
+];
+const FEATURES = [
+  { icon:'🧠', h:'AI Credit Scoring', p:'On-chain algorithm analyses repayment history, wallet age and KYC. Score 300–850, fully transparent.' },
+  { icon:'⛓️', h:'Smart Contract Escrow', p:'Funds locked in audited contracts. No human — not even us — can touch your money.' },
+  { icon:'🌍', h:'IPFS KYC Storage', p:'Documents on the InterPlanetary File System. Cryptographically permanent. No server to hack.' },
+  { icon:'👥', h:'Multi-Lender Pooling', p:'Multiple lenders co-fund one loan. Contract auto-splits repayment proportionally.' },
+  { icon:'🛡️', h:'Investor Protection', p:'2% protection pool per loan. Partial refund if a borrower defaults. Capital stays safer.' },
+  { icon:'💱', h:'ETH → INR Converter', p:'Live multi-currency conversion — INR, USD, EUR, GBP. Anyone can understand amounts.' },
+];
+const TESTIMONIALS = [
+  { name:'Priya Sharma', role:'Borrower · Mumbai', r:5, t:'Funded in 48 hours. No paperwork, no collateral. My credit score went from 650 to 720 after repayment.', a:'P' },
+  { name:'Rahul Mehta', role:'Lender · Bangalore', r:5, t:'8% returns on idle ETH. Smart contract handles everything. Invested in 12 loans so far.', a:'R' },
+  { name:'Anita Patel', role:'MSME Owner · Gujarat', r:4, t:'Business loan funded by 3 global lenders. Blockchain proof of funding is great for my records.', a:'A' },
+];
 
 export default function Home() {
-  const { isConnected, connectWallet } = useWallet();
+  const [visible, setVisible] = useState(new Set());
+  const refs = useRef({});
 
-  const features = [
-    {
-      icon: '🔒',
-      title: 'Trustless & Transparent',
-      desc: 'All loan logic runs on-chain via smart contracts. No middlemen, no hidden fees.',
-    },
-    {
-      icon: '⚡',
-      title: 'Instant Funding',
-      desc: 'Loans are funded directly by lenders. When fully funded, funds auto-transfer to the borrower.',
-    },
-    {
-      icon: '📊',
-      title: 'Credit Scores',
-      desc: 'On-chain credit scoring based on repayment history. Build your DeFi credit profile.',
-    },
-    {
-      icon: '🌐',
-      title: 'IPFS KYC',
-      desc: 'KYC documents stored on IPFS. Decentralized, censorship-resistant identity verification.',
-    },
-  ];
+  useEffect(() => {
+    const io = new IntersectionObserver(
+      es => es.forEach(e => {
+        if (e.isIntersecting) setVisible(p => new Set([...p, e.target.dataset.sec]));
+      }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('[data-sec]').forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, []);
 
-  const steps = [
-    { num: '01', title: 'Connect Wallet', desc: 'Link your MetaMask wallet to get started on EqualFund.' },
-    { num: '02', title: 'Complete KYC', desc: 'Upload your identity documents securely to IPFS.' },
-    { num: '03', title: 'Borrow or Lend', desc: 'Request a loan or browse the marketplace to fund others.' },
-    { num: '04', title: 'Track & Earn', desc: 'Monitor your loans, repayments, and investment returns.' },
-  ];
+  const vis = id => visible.has(id);
 
   return (
-    <div className="min-h-screen">
-      {/* Hero */}
-      <section className="relative overflow-hidden py-24 px-4">
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-500/5 to-transparent pointer-events-none" />
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-brand-500/10 border border-brand-500/20 rounded-full px-4 py-1.5 text-sm text-brand-400 mb-8">
-            <span className="w-2 h-2 bg-brand-400 rounded-full animate-pulse"></span>
-            Decentralized P2P Lending on Ethereum
+    <div className="page" style={{ position:'relative' }}>
+      <GeoBg />
+
+      {/* ── HERO ──────────────────────────────────────────── */}
+      <section style={{ minHeight:'100vh', display:'flex', alignItems:'center', padding:'6rem 1.5rem 4rem', position:'relative' }}>
+        <div className="container">
+
+          {/* Live badge */}
+          <div style={{ display:'inline-flex', alignItems:'center', gap:'8px', padding:'5px 14px', borderRadius:'99px', background:'rgba(0,232,122,0.08)', border:'1px solid rgba(0,232,122,0.2)', marginBottom:'2rem', animation:'fadeUp 0.6s ease both' }}>
+            <span style={{ width:'7px', height:'7px', borderRadius:'50%', background:'var(--mint)', animation:'pulse-dot 2s infinite' }} />
+            <span style={{ fontSize:'12px', color:'var(--mint-dim)', fontWeight:700, letterSpacing:'0.04em' }}>LIVE ON ETHEREUM SEPOLIA</span>
           </div>
-          <h1 className="text-5xl sm:text-6xl font-bold text-white mb-6 leading-tight">
-            Financial Access
-            <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-brand-300">
-              For Everyone
-            </span>
+
+          {/* Headline */}
+          <h1 style={{ fontSize:'clamp(2.6rem,7vw,5.5rem)', fontWeight:900, lineHeight:1.0, letterSpacing:'-0.05em', marginBottom:'1.5rem', animation:'fadeUp 0.7s ease 0.1s both' }}>
+            Decentralized<br />
+            <span style={{ color:'var(--mint-dim)' }}>P2P Lending.</span><br />
+            For Everyone.
           </h1>
-          <p className="text-xl text-dark-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            EqualFund connects borrowers and lenders directly through smart contracts.
-            No banks, no bureaucracy — just transparent, permissionless lending.
+
+          <p style={{ fontSize:'clamp(1rem,1.4vw,1.15rem)', color:'var(--ink-3)', maxWidth:'500px', lineHeight:1.75, marginBottom:'2.5rem', animation:'fadeUp 0.7s ease 0.2s both' }}>
+            EqualFund connects borrowers and lenders through Ethereum smart contracts. No banks. No middlemen. <strong style={{ color:'var(--ink)' }}>0.5% fee</strong> vs 18–36% from traditional banks.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {isConnected ? (
-              <>
-                <Link to="/borrow" className="btn-primary text-base">
-                  Apply for a Loan
-                </Link>
-                <Link to="/marketplace" className="btn-secondary text-base">
-                  Browse Marketplace
-                </Link>
-              </>
-            ) : (
-              <button onClick={connectWallet} className="btn-primary text-base px-8">
-                Get Started — Connect Wallet
-              </button>
-            )}
+
+          <div style={{ display:'flex', gap:'1rem', flexWrap:'wrap', marginBottom:'4rem', animation:'fadeUp 0.7s ease 0.3s both' }}>
+            <Link to="/create-loan" className="btn btn-dark" style={{ fontSize:'15px', padding:'1rem 2.25rem' }}>
+              Apply for a Loan →
+            </Link>
+            <Link to="/marketplace" className="btn btn-out" style={{ fontSize:'15px', padding:'1rem 2.25rem' }}>
+              Browse Marketplace ↗
+            </Link>
+          </div>
+
+          {/* Stats */}
+          <div className="grid-border reveal" data-sec="hero" style={{ gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', maxWidth:'680px', animation:'fadeUp 0.7s ease 0.4s both', opacity:1 }}>
+            {[
+              { v:'₹2.4Cr+', l:'Total Funded',    m:true  },
+              { v:'1,240+',  l:'Active Users',     m:false },
+              { v:'98.2%',   l:'Repayment Rate',   m:false },
+              { v:'0.5%',    l:'Platform Fee',     m:false },
+            ].map((s, i) => (
+              <div key={i} className="grid-cell stat-card">
+                <div className={`stat-val${s.m ? ' mint' : ''}`}>{s.v}</div>
+                <div className="stat-lbl">{s.l}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="py-12 px-4 border-y border-dark-800">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
-          {[
-            { label: 'Total Loans', value: '1,240+' },
-            { label: 'Total Funded', value: '845 ETH' },
-            { label: 'Avg. Return', value: '8.4%' },
-            { label: 'Borrowers', value: '3,200+' },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
-              <div className="text-sm text-dark-500">{stat.label}</div>
+      {/* ── TECH MARQUEE ──────────────────────────────────── */}
+      <div style={{ borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)', background:'var(--card-bg)', padding:'13px 0', overflow:'hidden' }}>
+        <div className="marquee-track" style={{ display:'flex', gap:'2.5rem' }}>
+          {[...TECH,...TECH,...TECH].map((t,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:'7px', whiteSpace:'nowrap', flexShrink:0 }}>
+              <span style={{ width:'5px', height:'5px', borderRadius:'50%', background:'var(--mint)', display:'inline-block' }} />
+              <span style={{ fontSize:'12px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.1em' }}>{t}</span>
             </div>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* Features */}
-      <section className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-white text-center mb-4">Why EqualFund?</h2>
-          <p className="text-dark-400 text-center mb-12 max-w-xl mx-auto">
-            Built on Ethereum, powered by smart contracts, designed for fairness.
-          </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((f) => (
-              <div key={f.title} className="glass-card p-6 hover:border-dark-600 transition-all duration-200">
-                <div className="text-3xl mb-4">{f.icon}</div>
-                <h3 className="font-semibold text-white mb-2">{f.title}</h3>
-                <p className="text-sm text-dark-400 leading-relaxed">{f.desc}</p>
+      {/* ── WORK MARQUEE ──────────────────────────────────── */}
+      <div style={{ padding:'2rem 0', overflow:'hidden' }}>
+        <div className="container-wide" style={{ marginBottom:'1rem', display:'flex', justifyContent:'space-between' }}>
+          <span style={{ fontSize:'11px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.12em' }}>Live Loan Activity</span>
+          <Link to="/marketplace" style={{ fontSize:'12px', color:'var(--ink-3)', fontWeight:600 }}>View all →</Link>
+        </div>
+        <div className="marquee-track marquee-track-slow" style={{ display:'flex', gap:'1rem', padding:'0 1.5rem' }}>
+          {[...LOANS,...LOANS,...LOANS].map((loan, i) => (
+            <div key={i} style={{ minWidth:'195px', flexShrink:0, background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:'14px', padding:'1.25rem' }}>
+              <span className={`pill ${loan.s==='Repaid'?'pill-mint':'pill-amber'}`} style={{ marginBottom:'12px', display:'inline-flex' }}>
+                {loan.s === 'Repaid' ? '✅' : '⚡'} {loan.s}
+              </span>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--ink)', marginBottom:'3px' }}>{loan.t}</div>
+              <div style={{ fontSize:'1.15rem', fontWeight:900, color:'var(--ink)', letterSpacing:'-0.03em', marginBottom:'3px' }}>{loan.a}</div>
+              <div style={{ fontSize:'11px', color:'var(--ink-3)' }}>{loan.r} APR · {loan.by}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── HOW IT WORKS ──────────────────────────────────── */}
+      <section data-sec="how" style={{ padding:'5rem 1.5rem' }}>
+        <div className="container">
+          <div style={{ opacity:vis('how')?1:0, transform:vis('how')?'none':'translateY(20px)', transition:'all 0.6s ease', marginBottom:'3rem' }}>
+            <div className="sec-label">Simple Process</div>
+            <h2 className="sec-title">From Application<br/>to Funded in Hours.</h2>
+          </div>
+          <div className="grid-border" style={{ gridTemplateColumns:'repeat(auto-fit, minmax(230px, 1fr))' }}>
+            {[
+              { n:'01', icon:'🪪', h:'KYC Verification', p:'Upload your ID. Stored permanently on IPFS — tamper-proof, decentralised forever.' },
+              { n:'02', icon:'📝', h:'Create Loan Request', p:'Set amount, rate and purpose. AI credit score sets your eligibility instantly.' },
+              { n:'03', icon:'💰', h:'Get Funded', p:'Global lenders fund via smart contract. Auto-releases when 100% funded.' },
+              { n:'04', icon:'✅', h:'Repay & Grow', p:'Repay on time. Smart contract auto-splits principal + interest to all lenders.' },
+            ].map((item, i) => (
+              <div key={i} className="grid-cell" style={{
+                padding:'2rem', position:'relative', overflow:'hidden',
+                opacity:vis('how')?1:0, transform:vis('how')?'none':'translateY(20px)',
+                transition:`all 0.55s ease ${i*0.08}s`,
+              }}>
+                <div style={{ position:'absolute', top:'-4px', right:'14px', fontSize:'4.5rem', fontWeight:900, color:'var(--border)', lineHeight:1, userSelect:'none', fontVariantNumeric:'tabular-nums' }}>{item.n}</div>
+                <div style={{ width:'44px', height:'44px', borderRadius:'12px', background:'var(--mint-pale)', border:'1px solid rgba(0,232,122,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px', marginBottom:'1rem' }}>{item.icon}</div>
+                <div style={{ fontSize:'14px', fontWeight:800, color:'var(--ink)', marginBottom:'7px', letterSpacing:'-0.02em' }}>{item.h}</div>
+                <div style={{ fontSize:'13px', color:'var(--ink-3)', lineHeight:1.65 }}>{item.p}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="py-20 px-4 border-t border-dark-800">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold text-white text-center mb-12">How It Works</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {steps.map((step) => (
-              <div key={step.num} className="relative">
-                <div className="text-5xl font-bold text-dark-800 mb-3 font-mono">{step.num}</div>
-                <h3 className="font-semibold text-white mb-2">{step.title}</h3>
-                <p className="text-sm text-dark-400">{step.desc}</p>
+      {/* ── FEATURES ──────────────────────────────────────── */}
+      <section data-sec="features" style={{ padding:'5rem 1.5rem', background:'var(--surface-3)', borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
+        <div className="container">
+          <div style={{ opacity:vis('features')?1:0, transform:vis('features')?'none':'translateY(20px)', transition:'all 0.6s ease', marginBottom:'3rem' }}>
+            <div className="sec-label">Why EqualFund</div>
+            <h2 className="sec-title">Built for Real World.<br/>Secured by Blockchain.</h2>
+          </div>
+          <div className="grid-border" style={{ gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))' }}>
+            {FEATURES.map((f, i) => (
+              <div key={i} className="grid-cell" style={{
+                padding:'1.875rem', display:'flex', gap:'1rem',
+                opacity:vis('features')?1:0, transform:vis('features')?'none':'translateY(15px)',
+                transition:`all 0.55s ease ${i*0.06}s`,
+              }}>
+                <div style={{ width:'42px', height:'42px', flexShrink:0, borderRadius:'10px', background:'var(--surface-3)', border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'18px', alignSelf:'flex-start' }}>{f.icon}</div>
+                <div>
+                  <div style={{ fontSize:'14px', fontWeight:800, color:'var(--ink)', marginBottom:'5px' }}>{f.h}</div>
+                  <div style={{ fontSize:'12.5px', color:'var(--ink-3)', lineHeight:1.65 }}>{f.p}</div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 px-4 border-t border-dark-800">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to get started?</h2>
-          <p className="text-dark-400 mb-8">
-            Join thousands of users already using EqualFund for transparent, on-chain lending.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/marketplace" className="btn-primary">Explore Loans</Link>
-            <Link to="/kyc" className="btn-secondary">Complete KYC</Link>
+      {/* ── COMPARISON ────────────────────────────────────── */}
+      <section data-sec="compare" style={{ padding:'5rem 1.5rem' }}>
+        <div className="container" style={{ maxWidth:'900px' }}>
+          <div style={{ opacity:vis('compare')?1:0, transform:vis('compare')?'none':'translateY(20px)', transition:'all 0.6s ease', textAlign:'center', marginBottom:'3rem' }}>
+            <h2 className="sec-title">How We Compare</h2>
+          </div>
+          <div style={{ border:'1px solid var(--border)', borderRadius:'16px', overflow:'auto', opacity:vis('compare')?1:0, transition:'all 0.6s ease 0.15s' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'14px', minWidth:'500px' }}>
+              <thead>
+                <tr style={{ background:'var(--surface-3)', borderBottom:'1px solid var(--border)' }}>
+                  {['Feature','EqualFund ★','Aave','Faircent','Banks'].map((h,i) => (
+                    <th key={h} style={{ padding:'1rem', textAlign:i===0?'left':'center', color:i===1?'var(--mint-dim)':'var(--ink-3)', fontWeight:700, fontSize:'12px', textTransform:'uppercase', letterSpacing:'0.07em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['KYC on IPFS','✅','❌','Central','Central'],
+                  ['Smart Contract','✅','✅','❌','❌'],
+                  ['On-chain Score','✅','❌','❌','CIBIL'],
+                  ['Collateral','None','Required','None','Required'],
+                  ['Platform Fee','0.5%','0.09%','3–5%','18–36%'],
+                  ['UPI / INR','✅','❌','✅','✅'],
+                  ['Multi-Lender','✅','❌','❌','❌'],
+                ].map((row, i) => (
+                  <tr key={i} style={{ borderBottom:'1px solid var(--border)', background:i%2===0?'var(--surface-3)':'transparent' }}>
+                    {row.map((cell,j) => (
+                      <td key={j} style={{ padding:'0.875rem 1rem', textAlign:j===0?'left':'center', color:j===1?(cell==='✅'?'var(--mint-dim)':cell==='❌'?'#ef4444':'var(--mint-dim)'):j===0?'var(--ink)':'var(--ink-3)', fontWeight:j===1?700:400 }}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
+
+      {/* ── TESTIMONIALS ──────────────────────────────────── */}
+      <section data-sec="testimonials" style={{ padding:'5rem 1.5rem', background:'var(--surface-3)', borderTop:'1px solid var(--border)' }}>
+        <div className="container">
+          <div style={{ opacity:vis('testimonials')?1:0, transform:vis('testimonials')?'none':'translateY(20px)', transition:'all 0.6s ease', textAlign:'center', marginBottom:'3rem' }}>
+            <div className="sec-label">Real Stories</div>
+            <h2 className="sec-title">Trusted by Real People</h2>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(290px, 1fr))', gap:'1.25rem' }}>
+            {TESTIMONIALS.map((t, i) => (
+              <div key={i} className="card card-hover card-mint" style={{
+                padding:'1.875rem',
+                opacity:vis('testimonials')?1:0, transform:vis('testimonials')?'none':'translateY(20px)',
+                transition:`all 0.55s ease ${i*0.1}s`,
+              }}>
+                <div style={{ display:'flex', gap:'3px', marginBottom:'1.125rem' }}>
+                  {Array(t.r).fill(0).map((_,j) => <span key={j} style={{ color:'var(--mint-dim)', fontSize:'14px' }}>★</span>)}
+                </div>
+                <p style={{ fontSize:'14px', color:'var(--ink-3)', lineHeight:1.7, marginBottom:'1.25rem', fontStyle:'italic' }}>"{t.t}"</p>
+                <div style={{ display:'flex', alignItems:'center', gap:'10px', borderTop:'1px solid var(--border)', paddingTop:'1.125rem' }}>
+                  <div style={{ width:'36px', height:'36px', borderRadius:'9px', background:'var(--mint-pale)', border:'1px solid rgba(0,232,122,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, color:'var(--mint-dim)', fontSize:'14px' }}>{t.a}</div>
+                  <div>
+                    <div style={{ fontWeight:700, color:'var(--ink)', fontSize:'14px' }}>{t.name}</div>
+                    <div style={{ fontSize:'12px', color:'var(--ink-3)' }}>{t.role}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ───────────────────────────────────────────── */}
+      <section style={{ padding:'7rem 1.5rem', textAlign:'center' }}>
+        <div className="container" style={{ maxWidth:'600px' }}>
+          <h2 style={{ fontSize:'clamp(2rem,5vw,3.75rem)', fontWeight:900, letterSpacing:'-0.05em', color:'var(--ink)', lineHeight:1.0, marginBottom:'1.25rem' }}>
+            Access Fair Finance.<br />
+            <span style={{ WebkitTextStroke:'2px var(--ink)', color:'transparent' }}>Start Today.</span>
+          </h2>
+          <p style={{ color:'var(--ink-3)', fontSize:'1rem', marginBottom:'2.25rem', lineHeight:1.7 }}>
+            No bank account needed — just a MetaMask wallet and a vision.
+          </p>
+          {/* FIXED: mint button with explicit black text */}
+          <div style={{ display:'flex', gap:'1rem', justifyContent:'center', flexWrap:'wrap' }}>
+            <Link to="/login" className="btn btn-mint" style={{ fontSize:'15px', padding:'1rem 2.5rem', color:'#000000' }}>
+              Get Started Free →
+            </Link>
+            <a href="https://sepolia.etherscan.io/address/0xa6b4Eb5a8e1C01C16de6E32BADec9c2c9BCa117C"
+              target="_blank" rel="noreferrer"
+              className="btn btn-out" style={{ fontSize:'15px', padding:'1rem 2.5rem' }}>
+              View Contract ↗
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ────────────────────────────────────────── */}
+      <footer style={{ borderTop:'1px solid var(--border)', padding:'2.5rem 1.5rem', background:'var(--surface-3)' }}>
+        <div className="container-wide" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'1.5rem' }}>
+          <div style={{ fontWeight:900, fontSize:'15px', color:'var(--ink)', letterSpacing:'-0.02em' }}>EqualFund</div>
+          <div style={{ fontSize:'12px', color:'var(--ink-3)' }}>© 2025 EqualFund · Decentralised P2P Lending · Ethereum</div>
+          <div style={{ display:'flex', gap:'2rem' }}>
+            {[['Contract','https://sepolia.etherscan.io/address/0xa6b4Eb5a8e1C01C16de6E32BADec9c2c9BCa117C',true],[' Marketplace','/marketplace',false],['KYC','/kyc',false]].map(([l,h,ext]) =>
+              ext
+                ? <a key={l} href={h} target="_blank" rel="noreferrer" style={{ fontSize:'12px', color:'var(--ink-3)' }}>{l}</a>
+                : <Link key={l} to={h} style={{ fontSize:'12px', color:'var(--ink-3)' }}>{l}</Link>
+            )}
+          </div>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.8)} }
+      `}</style>
     </div>
   );
 }

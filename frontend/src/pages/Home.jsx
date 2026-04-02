@@ -93,17 +93,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── TECH MARQUEE ──────────────────────────────────── */}
-      <div style={{ borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)', background:'var(--card-bg)', padding:'13px 0', overflow:'hidden' }}>
-        <div className="marquee-track" style={{ display:'flex', gap:'2.5rem' }}>
-          {[...TECH,...TECH,...TECH].map((t,i) => (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:'7px', whiteSpace:'nowrap', flexShrink:0 }}>
-              <span style={{ width:'5px', height:'5px', borderRadius:'50%', background:'var(--mint)', display:'inline-block' }} />
-              <span style={{ fontSize:'12px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.1em' }}>{t}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+
 
       {/* ── WORK MARQUEE ──────────────────────────────────── */}
       <div style={{ padding:'2rem 0', overflow:'hidden' }}>
@@ -179,42 +169,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── COMPARISON ────────────────────────────────────── */}
-      <section data-sec="compare" style={{ padding:'5rem 1.5rem' }}>
-        <div className="container" style={{ maxWidth:'900px' }}>
-          <div style={{ opacity:vis('compare')?1:0, transform:vis('compare')?'none':'translateY(20px)', transition:'all 0.6s ease', textAlign:'center', marginBottom:'3rem' }}>
-            <h2 className="sec-title">How We Compare</h2>
-          </div>
-          <div style={{ border:'1px solid var(--border)', borderRadius:'16px', overflow:'auto', opacity:vis('compare')?1:0, transition:'all 0.6s ease 0.15s' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'14px', minWidth:'500px' }}>
-              <thead>
-                <tr style={{ background:'var(--surface-3)', borderBottom:'1px solid var(--border)' }}>
-                  {['Feature','EqualFund ★','Aave','Faircent','Banks'].map((h,i) => (
-                    <th key={h} style={{ padding:'1rem', textAlign:i===0?'left':'center', color:i===1?'var(--mint-dim)':'var(--ink-3)', fontWeight:700, fontSize:'12px', textTransform:'uppercase', letterSpacing:'0.07em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  ['KYC on IPFS','✅','❌','Central','Central'],
-                  ['Smart Contract','✅','✅','❌','❌'],
-                  ['On-chain Score','✅','❌','❌','CIBIL'],
-                  ['Collateral','None','Required','None','Required'],
-                  ['Platform Fee','0.5%','0.09%','3–5%','18–36%'],
-                  ['UPI / INR','✅','❌','✅','✅'],
-                  ['Multi-Lender','✅','❌','❌','❌'],
-                ].map((row, i) => (
-                  <tr key={i} style={{ borderBottom:'1px solid var(--border)', background:i%2===0?'var(--surface-3)':'transparent' }}>
-                    {row.map((cell,j) => (
-                      <td key={j} style={{ padding:'0.875rem 1rem', textAlign:j===0?'left':'center', color:j===1?(cell==='✅'?'var(--mint-dim)':cell==='❌'?'#ef4444':'var(--mint-dim)'):j===0?'var(--ink)':'var(--ink-3)', fontWeight:j===1?700:400 }}>{cell}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+
 
       {/* ── TESTIMONIALS ──────────────────────────────────── */}
       <section data-sec="testimonials" style={{ padding:'5rem 1.5rem', background:'var(--surface-3)', borderTop:'1px solid var(--border)' }}>

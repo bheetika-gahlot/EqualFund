@@ -8,6 +8,7 @@ import Toast from '../components/Toast';
 import { ChatButton } from '../components/Chat';
 import { saveFundingToMongoDB } from '../services/loanService';
 import api from '../services/apiService';
+import { UpiPayButton } from '../components/UpiPayment';
 
 const CAT_COLORS = { education: '#06b6d4', medical: '#f43f5e', business: '#8b5cf6', emergency: '#ef4444', housing: '#f59e0b', other: '#888' };
 
@@ -175,6 +176,21 @@ export default function Marketplace() {
                 {loading ? '⏳ Processing...' : `💰 Fund ${fundAmount || '0'} ETH`}
               </button>
             </div>
+            {/* UPI Payment Button */}
+            <div style={{ borderTop:'1px solid var(--border)', marginTop:'1rem', paddingTop:'1rem' }}>
+            <div style={{ fontSize:'12px', fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'10px' }}>
+            🇮🇳 Or Pay in INR via UPI (Demo)
+            </div>
+            <UpiPayButton
+            ethAmount={fundAmount || fundModal?.amount}
+            purpose={fundModal?.purpose}
+            borrowerName={fundModal?.borrowerName}
+            onSuccess={(result) => {
+            setToast({ message:`✅ UPI done! ₹${result.inrAmount.toLocaleString('en-IN')}`, type:'success' });
+            setFundModal(null);
+         }}
+         />
+          </div>
           </div>
         </div>
       )}

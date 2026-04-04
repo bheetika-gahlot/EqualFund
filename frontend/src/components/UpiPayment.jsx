@@ -1,75 +1,181 @@
-// UpiPayment.jsx — ETH to INR conversion + Razorpay UPI payment
-import React, { useState, useEffect } from 'react';
+// UpiPayment.jsx — Fixed Razorpay UPI + ETH→INR converter
+import React, { useState, useEffect, useRef } from 'react';
 
 const CURRENCIES = [
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee',     flag: '🇮🇳', rate: 250000 },
-  { code: 'USD', symbol: '$', name: 'US Dollar',         flag: '🇺🇸', rate: 3000   },
-  { code: 'EUR', symbol: '€', name: 'Euro',              flag: '🇪🇺', rate: 2800   },
-  { code: 'GBP', symbol: '£', name: 'British Pound',     flag: '🇬🇧', rate: 2400   },
-  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham',     flag: '🇦🇪', rate: 11000  },
-  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', flag: '🇸🇬', rate: 4000   },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee',     flag: '🇮🇳' },
+  { code: 'USD', symbol: '$', name: 'US Dollar',         flag: '🇺🇸' },
+  { code: 'EUR', symbol: '€', name: 'Euro',              flag: '🇪🇺' },
+  { code: 'GBP', symbol: '£', name: 'British Pound',     flag: '🇬🇧' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham',     flag: '🇦🇪' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar', flag: '🇸🇬' },
 ];
 
-// ── Live ETH price fetcher ────────────────────────────────
-let priceCache = null;
-let priceCacheTime = 0;
+// Fallback rates (if CoinGecko unavailable)
+const FALLBACK = { inr: 252000, usd: 3020, eur: 2790, gbp: 2350, aed: 11100, sgd: 4060 };
 
-const getETHPrices = async () => {
-  if (priceCache && Date.now() - priceCacheTime < 300000) return priceCache;
+let _cache = null, _cacheTime = 0;
+const getPrices = async () => {
+  if (_cache && Date.now() - _cacheTime < 300000) return _cache;
   try {
-    const codes = CURRENCIES.map(c => c.code.toLowerCase()).join(',');
-    const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=${codes}`);
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=inr,usd,eur,gbp,aed,sgd');
     const d = await r.json();
-    priceCache     = d.ethereum;
-    priceCacheTime = Date.now();
-    return d.ethereum;
-  } catch {
-    const fallback = {};
-    CURRENCIES.forEach(c => { fallback[c.code.toLowerCase()] = c.rate; });
-    return fallback;
-  }
+    _cache = d.ethereum; _cacheTime = Date.now();
+    return _cache;
+  } catch { return FALLBACK; }
 };
 
-const fmt = (amount, currency) => {
-  const curr = CURRENCIES.find(c => c.code === currency);
-  return `${curr?.symbol || ''}${Number(amount).toLocaleString('en-IN', { maximumFractionDigits: currency === 'JPY' ? 0 : 2 })}`;
+const fmt = (amount, code) => {
+  const c = CURRENCIES.find(x => x.code === code);
+  const n = Number(amount);
+  const s = n.toLocaleString('en-IN', { maximumFractionDigits: code === 'JPY' ? 0 : 0 });
+  return `${c?.symbol}${s}`;
 };
 
-// ── ETH Amount Display with currency dropdown ─────────────
+// ── Load Razorpay script once ─────────────────────────────
+const loadRazorpay = () => new Promise((res, rej) => {
+  if (window.Razorpay) { res(true); return; }
+  const s = document.createElement('script');
+  s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+  s.onload  = () => res(true);
+  s.onerror = () => rej(new Error('Razorpay load failed'));
+  document.head.appendChild(s);
+});
+
+// ── UPI Pay Button ────────────────────────────────────────
+export function UpiPayButton({ ethAmount, purpose, borrowerName, onSuccess }) {
+  const [prices,  setPrices]   = useState(null);
+  const [paying,  setPaying]   = useState(false);
+  const [showTip, setShowTip]  = useState(false);
+  const eth = parseFloat(ethAmount || 0);
+
+  useEffect(() => { getPrices().then(setPrices); }, []);
+
+  const inrAmount = prices ? Math.max(1, Math.round(eth * prices.inr)) : 0;
+
+  const handlePay = async () => {
+    if (!inrAmount || paying) return;
+    setPaying(true);
+    try {
+      await loadRazorpay();
+
+      // ── FIXED Razorpay config — only card method (UPI requires backend order) ──
+      const options = {
+        key:      'rzp_test_1DP5mmOlF5G5ag',
+        amount:   inrAmount * 100,       // paise
+        currency: 'INR',
+        name:     'EqualFund',
+        description: `P2P Loan · ${eth.toFixed(4)} ETH`,
+        image:    'https://equalfund.vercel.app/favicon.ico',
+        prefill: {
+          name:    borrowerName || 'EqualFund User',
+          email:   'demo@equalfund.com',
+          contact: '9999999999',
+        },
+        theme:  { color: '#00e87a' },
+        method: {
+          // !! FIX: Only enable methods that work in test mode without backend
+          card:    true,
+          netbanking: true,
+          wallet:  true,
+          upi:     false,   // UPI requires backend order creation — disabled for demo
+          emi:     false,
+        },
+        notes: {
+          eth_amount:  `${eth} ETH`,
+          inr_amount:  `₹${inrAmount.toLocaleString('en-IN')}`,
+          loan_purpose: purpose || 'P2P Loan',
+          platform:    'EqualFund Demo',
+        },
+        handler: response => {
+          setPaying(false);
+          onSuccess?.({ paymentId: response.razorpay_payment_id, inrAmount, ethAmount: eth });
+        },
+        modal: {
+          ondismiss:     () => setPaying(false),
+          escape:        false,
+          backdropclose: false,
+          confirm_close: true,
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', () => { setPaying(false); });
+      rzp.open();
+    } catch (e) {
+      setPaying(false);
+      alert('Payment gateway error: ' + e.message);
+    }
+  };
+
+  if (!inrAmount) return null;
+
+  return (
+    <div>
+      <button onClick={handlePay} disabled={paying}
+        style={{ padding: '10px 20px', borderRadius: '10px', background: paying ? 'rgba(0,200,100,0.3)' : 'linear-gradient(135deg,#00e87a,#00c965)', color: '#000', fontWeight: 800, border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px', transition: 'all 0.2s', width: '100%', justifyContent: 'center' }}>
+        {paying ? '⏳ Opening payment...' : `💳 Pay ₹${inrAmount.toLocaleString('en-IN')} (Demo)`}
+      </button>
+
+      <button onClick={() => setShowTip(!showTip)} style={{ background: 'none', border: 'none', fontSize: '11px', color: 'var(--ink-3)', cursor: 'pointer', marginTop: '5px', display: 'block', width: '100%', textAlign: 'center' }}>
+        ℹ️ Test card details {showTip ? '▲' : '▼'}
+      </button>
+
+      {showTip && (
+        <div style={{ marginTop: '6px', padding: '10px 12px', background: 'var(--surface-3)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.8 }}>
+          <strong style={{ color: 'var(--ink)', display: 'block', marginBottom: '4px' }}>Test credentials:</strong>
+          <div>Card: <code style={{ background: 'var(--border)', padding: '1px 5px', borderRadius: '3px', fontSize: '11px' }}>4111 1111 1111 1111</code></div>
+          <div>Expiry: <code style={{ background: 'var(--border)', padding: '1px 5px', borderRadius: '3px', fontSize: '11px' }}>12/28</code> · CVV: <code style={{ background: 'var(--border)', padding: '1px 5px', borderRadius: '3px', fontSize: '11px' }}>123</code></div>
+          <div style={{ color: '#00c965', marginTop: '4px' }}>✅ No real money charged · Test mode only</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ETH Amount with currency switcher ────────────────────
 export function ETHAmount({ eth, size = 'normal' }) {
   const [prices,   setPrices]   = useState(null);
   const [currency, setCurrency] = useState('INR');
   const [open,     setOpen]     = useState(false);
+  const dropRef = useRef(null);
 
-  useEffect(() => { getETHPrices().then(setPrices); }, []);
+  useEffect(() => { getPrices().then(setPrices); }, []);
+  useEffect(() => {
+    const handler = e => { if (dropRef.current && !dropRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-  const converted = prices
-    ? fmt(parseFloat(eth || 0) * (prices[currency.toLowerCase()] || 0), currency)
-    : '...';
+  const rate      = prices?.[currency.toLowerCase()] || FALLBACK[currency.toLowerCase()] || 0;
+  const converted = fmt(parseFloat(eth || 0) * rate, currency);
+  const curr      = CURRENCIES.find(c => c.code === currency);
 
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-      <span style={{ fontWeight: 900, color: 'var(--mint-dim)', fontFamily: 'monospace', fontSize: size === 'large' ? '1.5rem' : '1rem' }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+      <span style={{ fontWeight: 900, color: '#00c965', fontFamily: 'monospace', fontSize: size === 'large' ? '1.4rem' : '0.95rem' }}>
         {parseFloat(eth || 0).toFixed(4)} ETH
       </span>
-      <span style={{ fontSize: size === 'large' ? '1rem' : '0.8rem', color: 'var(--ink-3)' }}>≈</span>
-      <span style={{ fontWeight: 700, color: '#22c55e', fontSize: size === 'large' ? '1rem' : '0.8rem' }}>{converted}</span>
-      <div style={{ position: 'relative' }}>
+      <span style={{ fontSize: '0.75rem', color: 'var(--ink-3)' }}>≈</span>
+      <span style={{ fontWeight: 700, color: '#22c55e', fontSize: size === 'large' ? '1rem' : '0.78rem' }}>{converted}</span>
+      <div ref={dropRef} style={{ position: 'relative' }}>
         <button onClick={() => setOpen(!open)}
-          style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--ink-3)', cursor: 'pointer', fontWeight: 700 }}>
-          {CURRENCIES.find(c => c.code === currency)?.flag} {currency} ▾
+          style={{ padding: '2px 7px', borderRadius: '5px', fontSize: '11px', background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--ink-3)', cursor: 'pointer', fontWeight: 700 }}>
+          {curr?.flag} {currency} ▾
         </button>
         {open && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '6px', minWidth: '200px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
-            {CURRENCIES.map(c => (
-              <button key={c.code} onClick={() => { setCurrency(c.code); setOpen(false); }}
-                style={{ width: '100%', padding: '6px 10px', borderRadius: '7px', border: 'none', background: currency === c.code ? 'var(--surface-3)' : 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--ink)' }}>
-                <span>{c.flag} {c.name}</span>
-                <span style={{ fontFamily: 'monospace', color: '#22c55e', fontSize: '11px' }}>
-                  {prices ? fmt(parseFloat(eth || 0) * (prices[c.code.toLowerCase()] || 0), c.code) : '...'}
-                </span>
-              </button>
-            ))}
+          <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '5px', minWidth: '195px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', marginTop: '4px' }}>
+            {CURRENCIES.map(c => {
+              const r = prices?.[c.code.toLowerCase()] || FALLBACK[c.code.toLowerCase()] || 0;
+              return (
+                <button key={c.code} onClick={() => { setCurrency(c.code); setOpen(false); }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '7px', border: 'none', background: currency === c.code ? 'var(--surface-3)' : 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--ink)' }}>
+                  <span>{c.flag} {c.name}</span>
+                  <span style={{ fontFamily: 'monospace', color: '#22c55e', fontSize: '11px' }}>
+                    {fmt(parseFloat(eth || 0) * r, c.code)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -77,115 +183,41 @@ export function ETHAmount({ eth, size = 'normal' }) {
   );
 }
 
-// ── Razorpay UPI Payment (for demo) ──────────────────────
-export function UpiPayButton({ ethAmount, purpose, borrowerName, onSuccess }) {
+// ── Currency Converter Widget ─────────────────────────────
+export function CurrencyConverter({ defaultEth = '1' }) {
+  const [eth,     setEth]     = useState(defaultEth);
   const [prices,  setPrices]  = useState(null);
-  const [paying,  setPaying]  = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
-
-  useEffect(() => { getETHPrices().then(setPrices); }, []);
-
-  const inrAmount = prices ? Math.round(parseFloat(ethAmount || 0) * prices.inr) : 0;
-
-  const handlePay = async () => {
-    if (!inrAmount) return;
-    setPaying(true);
-
-    // Load Razorpay script
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    document.body.appendChild(script);
-
-    script.onload = () => {
-      const rzp = new window.Razorpay({
-        key:         'rzp_test_1DP5mmOlF5G5ag', // Test key — safe to show
-        amount:      inrAmount * 100, // paise
-        currency:    'INR',
-        name:        'EqualFund',
-        description: `Loan: ${purpose || 'P2P Loan'} | ${ethAmount} ETH`,
-        image:       'https://equalfund.vercel.app/favicon.ico',
-        prefill:     { name: borrowerName || 'Borrower', email: 'demo@equalfund.com', contact: '9999999999' },
-        theme:       { color: '#00e87a' },
-        notes:       { ethAmount: `${ethAmount} ETH`, inrEquivalent: `₹${inrAmount.toLocaleString('en-IN')}`, platform: 'EqualFund Demo' },
-        handler: (response) => {
-          setPaying(false);
-          onSuccess?.({
-            paymentId: response.razorpay_payment_id,
-            inrAmount,
-            ethAmount,
-          });
-          alert(`✅ Payment Successful!\nPayment ID: ${response.razorpay_payment_id}\nAmount: ₹${inrAmount.toLocaleString('en-IN')}\nEquivalent: ${ethAmount} ETH\n\n(Demo mode — no real money charged)`);
-        },
-        modal: { ondismiss: () => setPaying(false) },
-      });
-      rzp.open();
-    };
-    script.onerror = () => { setPaying(false); alert('Failed to load payment gateway'); };
-  };
-
-  return (
-    <div>
-      <button onClick={handlePay} disabled={paying || !inrAmount}
-        style={{ padding: '10px 20px', borderRadius: '10px', background: paying ? 'rgba(0,200,100,0.3)' : 'linear-gradient(135deg,#00e87a,#00c965)', color: '#000', fontWeight: 800, border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
-        {paying ? '⏳ Processing...' : `🇮🇳 Pay ₹${inrAmount.toLocaleString('en-IN')} via UPI`}
-      </button>
-
-      <button onClick={() => setShowInfo(!showInfo)}
-        style={{ background: 'none', border: 'none', fontSize: '11px', color: 'var(--ink-3)', cursor: 'pointer', marginTop: '4px' }}>
-        ℹ️ Test cards & UPI IDs
-      </button>
-
-      {showInfo && (
-        <div style={{ marginTop: '8px', padding: '10px 12px', background: 'var(--surface-3)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '12px', color: 'var(--ink-3)', lineHeight: 1.8 }}>
-          <strong style={{ color: 'var(--ink)', display: 'block', marginBottom: '4px' }}>Test credentials (Razorpay test mode):</strong>
-          <div>Card: <code style={{ background: 'var(--border)', padding: '1px 4px', borderRadius: '3px' }}>4111 1111 1111 1111</code> · Exp: 12/25 · CVV: 123</div>
-          <div>UPI: <code style={{ background: 'var(--border)', padding: '1px 4px', borderRadius: '3px' }}>success@razorpay</code></div>
-          <div style={{ color: '#22c55e', marginTop: '4px' }}>✅ No real money is charged in test mode</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Full Currency Converter Widget ────────────────────────
-export function CurrencyConverter() {
-  const [eth,      setEth]      = useState('1');
-  const [prices,   setPrices]   = useState(null);
-  const [loading,  setLoading]  = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    getETHPrices().then(p => { setPrices(p); setLoading(false); });
+    getPrices().then(p => { setPrices(p); setLoading(false); });
   }, []);
 
   return (
-    <div className="card" style={{ padding: '1.5rem' }}>
-      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem' }}>
-        💱 ETH Currency Converter
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+    <div className="card" style={{ padding: '1.25rem' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>💱 ETH Converter</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <input type="number" value={eth} onChange={e => setEth(e.target.value)} min="0" step="0.01"
-          style={{ width: '100px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface-3)', color: 'var(--ink)', fontSize: '15px', fontFamily: 'monospace', fontWeight: 700, outline: 'none' }} />
-        <span style={{ fontWeight: 800, color: 'var(--mint-dim)', fontSize: '15px' }}>ETH</span>
+          style={{ width: '90px', padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface-3)', color: 'var(--ink)', fontSize: '14px', fontFamily: 'monospace', fontWeight: 700, outline: 'none' }} />
+        <span style={{ fontWeight: 800, color: '#00c965', fontSize: '14px' }}>ETH</span>
+        {loading && <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>Loading...</span>}
       </div>
-      {loading ? (
-        <div style={{ color: 'var(--ink-3)', fontSize: '13px' }}>Fetching live prices...</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {CURRENCIES.map(c => {
-            const amount = parseFloat(eth || 0) * (prices?.[c.code.toLowerCase()] || c.rate);
-            return (
-              <div key={c.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: c.code === 'INR' ? 'var(--mint-pale)' : 'var(--surface-3)', borderRadius: '8px', border: c.code === 'INR' ? '1px solid rgba(0,232,122,0.2)' : '1px solid var(--border)' }}>
-                <span style={{ fontSize: '13px' }}>{c.flag} {c.name}</span>
-                <span style={{ fontWeight: 800, fontFamily: 'monospace', color: c.code === 'INR' ? 'var(--mint-dim)' : 'var(--ink)', fontSize: '13px' }}>
-                  {fmt(amount, c.code)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div style={{ fontSize: '10px', color: 'var(--ink-3)', marginTop: '8px', textAlign: 'right' }}>Live via CoinGecko · Updates every 5 min</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {CURRENCIES.map(c => {
+          const rate   = prices?.[c.code.toLowerCase()] || FALLBACK[c.code.toLowerCase()] || 0;
+          const amount = parseFloat(eth || 0) * rate;
+          return (
+            <div key={c.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: c.code === 'INR' ? 'rgba(0,232,122,0.06)' : 'var(--surface-3)', borderRadius: '8px', border: c.code === 'INR' ? '1px solid rgba(0,232,122,0.2)' : '1px solid var(--border)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--ink)' }}>{c.flag} {c.name}</span>
+              <span style={{ fontWeight: 800, fontFamily: 'monospace', color: c.code === 'INR' ? '#00c965' : 'var(--ink)', fontSize: '13px' }}>
+                {fmt(amount, c.code)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: '10px', color: 'var(--ink-3)', marginTop: '8px', textAlign: 'right' }}>Live via CoinGecko · ~5 min cache</div>
     </div>
   );
 }

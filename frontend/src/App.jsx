@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import AIChatbot from './components/AIChatbot';
 
 import Home from './pages/Home';
 import Marketplace from './pages/Marketplace';
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin"       element={<AdminRoute><AdminDashboard /></AdminRoute>} />
           <Route path="*"            element={<Navigate to="/" replace />} />
+          <AIChatbot />
         </Routes>
       </main>
     </>

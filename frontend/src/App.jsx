@@ -55,9 +55,11 @@ function AppRoutes() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin"       element={<AdminRoute><AdminDashboard /></AdminRoute>} />
           <Route path="*"            element={<Navigate to="/" replace />} />
-          <AIChatbot />
         </Routes>
       </main>
+
+      {/* ✅ AIChatbot OUTSIDE <Routes> — this was the crash */}
+      {!isAdminPage && <AIChatbot />}
     </>
   );
 }

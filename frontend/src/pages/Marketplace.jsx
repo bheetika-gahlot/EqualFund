@@ -230,6 +230,8 @@ export default function Marketplace() {
                 ethAmount={fundAmount || fundModal?.amount}
                 purpose={fundModal?.purpose}
                 borrowerName={fundModal?.borrowerName}
+                loanId={fundModal?.id}
+                lenderAddress={account} 
                 onSuccess={result => {
                   setToast({ message: `✅ Payment ₹${result.inrAmount.toLocaleString('en-IN')} successful!`, type: 'success' });
                   setFundModal(null);

@@ -261,6 +261,7 @@ function LoanCard({ loan, onRepay, repaying }) {
     const due = new Date(new Date(loan.fundedAt).getTime() + loan.duration * 86400000);
     daysLeft = Math.ceil((due - new Date()) / 86400000);
   }
+ 
 
   return (
     <div className="card card-hover" style={{ padding: '1.5rem', borderColor: isActive && daysLeft !== null && daysLeft <= 3 ? 'rgba(239,68,68,0.35)' : undefined }}>
@@ -306,6 +307,15 @@ function LoanCard({ loan, onRepay, repaying }) {
               <div className="prog"><div className="prog-fill" style={{ width: `${funded}%` }} /></div>
             </div>
           )}
+          {loan.investments?.some(i => i.paymentMethod === 'inr') && (() => {
+          const inv = loan.investments.find(i => i.paymentMethod === 'inr');
+          return (
+          <div style={{ marginTop:'10px', padding:'8px 12px', background:'rgba(0,232,122,0.06)', border:'1px solid rgba(0,232,122,0.2)', borderRadius:'8px', fontSize:'12px', color:'#00c965', display:'flex', justifyContent:'space-between' }}>
+          <span>💳 Funded via INR Payment</span>
+          <span style={{ fontWeight:700 }}>₹{Number(inv.inrAmount||0).toLocaleString('en-IN')} by {inv.lenderName}</span>
+          </div>
+          );
+        })()}
         </div>
 
         {/* Action */}

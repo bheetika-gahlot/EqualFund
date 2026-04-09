@@ -227,16 +227,16 @@ export default function Marketplace() {
                 🇮🇳 Or Pay in INR (Demo)
               </div>
               <UpiPayButton
-                ethAmount={fundAmount || fundModal?.amount}
-                purpose={fundModal?.purpose}
-                borrowerName={fundModal?.borrowerName}
-                loanId={fundModal?.id}
-                lenderAddress={account} 
-                onSuccess={result => {
-                  setToast({ message: `✅ Payment ₹${result.inrAmount.toLocaleString('en-IN')} successful!`, type: 'success' });
-                  setFundModal(null);
-                }}
-              />
+              ethAmount={fundAmount || fundModal?.amount}
+              purpose={fundModal?.purpose}
+              loanId={fundModal?.id}
+              lenderAddress={account}
+              lenderName={user?.name || account?.slice(0,8)+'...'}
+              onSuccess={result => {
+              setToast({ message: `✅ ₹${result.inrAmount.toLocaleString('en-IN')} paid! Borrower notified.`, type:'success' });
+              setFundModal(null); fetchLoans();
+             }}
+             />
             </div>
           </div>
         </div>

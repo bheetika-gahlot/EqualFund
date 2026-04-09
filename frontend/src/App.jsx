@@ -18,6 +18,7 @@ import Profile from './pages/Profile';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminLogin from './pages/AdminLogin';
 import NGOPage from './pages/NGOPage';
+import ChatPage from './pages/ChatPage';
 
 function ProtectedRoute({ children }) {
   const { isLoggedIn } = useAuth();
@@ -54,7 +55,9 @@ function AppRoutes() {
           <Route path="/profile"     element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin"       element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-          <Route path="*"            element={<Navigate to="/" replace />} />
+          <Route path="*"  element={<Navigate to="/" replace />} 
+          />
+          <Route path="/chat/:loanId/:otherAddress" element={<ChatPage />} />
         </Routes>
       </main>
 
